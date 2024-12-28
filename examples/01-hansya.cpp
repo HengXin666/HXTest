@@ -25,7 +25,7 @@ struct Any {
  * 
  * @tparam T 
  * @tparam Args 
- * @return  
+ * @return 结构体成员个数
  */
 template <class T, class... Args>
 consteval auto member_count() {
@@ -36,12 +36,39 @@ consteval auto member_count() {
     if constexpr (requires { T{ {Args{}}..., {Any{}} }; } == false) {
         return sizeof...(Args);
     } else {
+        // 如果可以实例化, 则添加一个参数
         return member_count<T, Args..., Any>();
     }
 }
 
+constexpr decltype(auto) visit_members(auto&& obj, auto&& visitor) {
+    // 去除引用, 获取实际类型
+    using ObjType = std::remove_reference_t<decltype(obj)>;
+    constexpr auto Cnt = member_count<ObjType>();
+
+    if constexpr (Cnt == 0) {
+        return visitor();
+    } else if constexpr (Cnt == 1) {
+        auto&& [a1] = obj;
+        return visitor(a1);
+    } else if constexpr (Cnt == 2) {
+        auto&& [a1, a2] = obj;
+        return visitor(a1, a2);
+    } else if constexpr (Cnt == 3) {
+        auto&& [a1, a2, a3] = obj;
+        return visitor(a1, a2, a3);
+    } // ...
+    throw;
+}
+
 int main() {
-    std::cout << member_count<Person>() << '\n';
+    auto vistPrint = [](auto&&... its) {
+        ((std::cout << its << ' '), ...);
+        std::cout << '\n';
+    };
+
+    Person p{2233, "114514"};
+    visit_members(p, vistPrint);
 
     // Person p3 {Any{}, Any{}, Any{}}; // 报错
 
