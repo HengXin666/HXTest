@@ -18,13 +18,6 @@ struct Any {
     operator T(); // 重载了类型转化运算符
 };
 
-/**
- * @brief 去掉 T 的 &、&&、const、volatile
- * @tparam T
- */
-template <class T>
-using BaseType = std::remove_cv_t<std::remove_reference_t<T>>;
-
 /*
 首先利用聚合初始化 sfiane 出成员个数，
 然后结构化绑定拿到成员，
@@ -52,6 +45,21 @@ consteval auto member_count() {
         return member_count<T, Args..., Any>();
     }
 }
+
+/*
+对于 Person, 是实例化为: (GCC)
+目前问题是, 为什么可以出现 & wrapper<Person>::value.Person::id 这种展示到成员名称的, 成员指针?!
+
+constexpr std::string_view get_member_name() [
+    with auto ptr = Wrapper<int*>{
+        (& wrapper<Person>::value.Person::id)}; 
+        std::string_view = std::basic_string_view<char>],
+
+constexpr std::string_view get_member_name() [
+    with auto ptr = Wrapper<std::__cxx11::basic_string<char>*>{
+        (& wrapper<Person>::value.Person::name)}; 
+        std::string_view = std::basic_string_view<char>], 
+*/
 
 template <auto ptr>
 inline constexpr std::string_view get_member_name() {
@@ -140,6 +148,10 @@ struct object_tuple_view_helper<T, 0> {
     static constexpr decltype(auto) tuple_view(T &&, Visitor &&) {}
 };
 
+/**
+ * @brief 去掉 T 的 &、&&、const、volatile
+ * @tparam T
+ */
 template <typename T>
 using remove_cvref_t = std::remove_cv_t<std::remove_reference_t<T>>;
 
@@ -153,10 +165,12 @@ inline constexpr remove_cvref_t<T> &get_fake_object() noexcept {
     return wrapper<remove_cvref_t<T>>::value;
 }
 
+// 此处的 T = Person
 #define RFL_INTERNAL_OBJECT_IF_YOU_SEE_AN_ERROR_REFER_TO_DOCUMENTATION_ON_C_ARRAYS(n, ...) \
     template <class T>                                                                     \
     struct object_tuple_view_helper<T, n> {                                                \
         static constexpr auto tuple_view() {                                               \
+            (void)"// 看来 核心就是下面这个 get_fake_object 的作用"; \
             auto &[__VA_ARGS__] = get_fake_object<remove_cvref_t<T>>();                    \
             auto ref_tup = std::tie(__VA_ARGS__);                                          \
             auto get_ptrs = [](auto &..._refs) {                                           \
@@ -164,6 +178,8 @@ inline constexpr remove_cvref_t<T> &get_fake_object() noexcept {
             };                                                                             \
             return std::apply(get_ptrs, ref_tup);                                          \
         }                                                                                  \
+    }
+        /*
         static constexpr auto tuple_view(T &t) {                                           \
             auto &[__VA_ARGS__] = t;                                                       \
             return std::tie(__VA_ARGS__);                                                  \
@@ -174,20 +190,21 @@ inline constexpr remove_cvref_t<T> &get_fake_object() noexcept {
             return visitor(__VA_ARGS__);                                                   \
         }                                                                                  \
     }
+        */
 
 // 使用宏, 生成 object_tuple_view_helper 的 不同n的偏特化!!!
 #include "member_macro.hpp"
 
-template <class T>
-inline constexpr auto tuple_view(T &&t) {
-    return object_tuple_view_helper<T, members_count_v<T>>::tuple_view(t);
-}
+// template <class T>
+// inline constexpr auto tuple_view(T &&t) {
+//     return object_tuple_view_helper<T, members_count_v<T>>::tuple_view(t);
+// }
 
-template <size_t Count, class T, typename Visitor>
-inline constexpr decltype(auto) tuple_view(T &&t, Visitor &&visitor) {
-    return object_tuple_view_helper<T, Count>::tuple_view(
-        std::forward<T>(t), std::forward<Visitor>(visitor));
-}
+// template <size_t Count, class T, typename Visitor>
+// inline constexpr decltype(auto) tuple_view(T &&t, Visitor &&visitor) {
+//     return object_tuple_view_helper<T, Count>::tuple_view(
+//         std::forward<T>(t), std::forward<Visitor>(visitor));
+// }
 
 template <class T>
 inline constexpr auto struct_to_tuple() {
@@ -238,7 +255,7 @@ template <typename T>
 inline constexpr std::array<std::string_view, members_count_v<T>>
 get_member_names() {
     auto arr = _get_member_names<T>();
-    using U = BaseType<T>;
+    using U = remove_cvref_t<T>;
     if constexpr (has_alias_field_names_v<U> ||
                   has_inner_alias_field_names_v<U>) {
         constexpr auto alias_arr = get_alias_field_names<U>();
@@ -254,6 +271,7 @@ constexpr decltype(auto) visit_members(auto &&obj, auto &&visitor) {
     using ObjType = std::remove_reference_t<decltype(obj)>;
     constexpr auto Cnt = member_count<ObjType>();
 
+    // 用宏实现!, 见上面
     if constexpr (Cnt == 0) {
         return visitor();
     } else if constexpr (Cnt == 1) {
