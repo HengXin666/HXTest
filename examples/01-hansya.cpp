@@ -170,12 +170,15 @@ inline constexpr remove_cvref_t<T> &get_fake_object() noexcept {
     template <class T>                                                                     \
     struct object_tuple_view_helper<T, n> {                                                \
         static constexpr auto tuple_view() {                                               \
-            (void)"// 看来 核心就是下面这个 get_fake_object 的作用"; \
+            (void)"// 看来 核心就是下面这个 get_fake_object 的作用! (现在我就是不明白, get_fake_object干了什么qwq...)"; \
+            (void)"// 先是将他们打包, 然后结构化绑定 到__VA_ARGS__"; \
             auto &[__VA_ARGS__] = get_fake_object<remove_cvref_t<T>>();                    \
+            (void)"// 然后使用 tie 将他们按照左值引用, 绑定为 tuple"; \
             auto ref_tup = std::tie(__VA_ARGS__);                                          \
             auto get_ptrs = [](auto &..._refs) {                                           \
                 return std::make_tuple(&_refs...);                                         \
             };                                                                             \
+            (void)"// 然后调用函数, 以展开, 并且取地址 也就是 成员指针?! (返回是tuple<成员指针...>)"; \
             return std::apply(get_ptrs, ref_tup);                                          \
         }                                                                                  \
     }
@@ -217,7 +220,10 @@ _get_member_names() {
     constexpr size_t Count = members_count_v<T>;
     std::array<std::string_view, Count> arr;
 #if __cplusplus >= 202002L && (!defined(_MSC_VER) || _MSC_VER >= 1930)
+    // 得到 tuple<成员指针...>
     constexpr auto tp = struct_to_tuple<T>();
+
+    // 使用魔法, 遍历每一个成员指针 以实例化模版, to 成员名称, 然后保存到 arr里面
     [&]<size_t... Is>(std::index_sequence<Is...>) mutable {
         ((arr[Is] = get_member_name<wrap(std::get<Is>(tp))>()), ...);
     }(std::make_index_sequence<Count>{});
