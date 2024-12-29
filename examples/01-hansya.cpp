@@ -6,8 +6,8 @@
 #include <utility>
 
 struct Person {
-    int id;
-    std::string name;
+    int id____;
+    std::string name____;
 
     // 需要使用聚合初始化, 因此不能书写构造函数
     // Person() {}
@@ -98,8 +98,9 @@ template <class T>
 Wrapper(T) -> Wrapper<T>;
 
 // This workaround is necessary for clang.
+// 此解决方法对于clang是必要的
 template <class T>
-inline constexpr auto wrap(T const &arg) noexcept {
+inline constexpr auto wrap(const T& arg) noexcept {
     return Wrapper{arg};
 }
 
@@ -160,6 +161,11 @@ struct wrapper {
     static inline remove_cvref_t<T> value;
 };
 
+/**
+ * @brief 获取 T 类型的全局静态引用
+ * @tparam T 
+ * @return constexpr remove_cvref_t<T>& 
+ */
 template <class T>
 inline constexpr remove_cvref_t<T> &get_fake_object() noexcept {
     return wrapper<remove_cvref_t<T>>::value;
@@ -170,8 +176,7 @@ inline constexpr remove_cvref_t<T> &get_fake_object() noexcept {
     template <class T>                                                                     \
     struct object_tuple_view_helper<T, n> {                                                \
         static constexpr auto tuple_view() {                                               \
-            (void)"// 看来 核心就是下面这个 get_fake_object 的作用! (现在我就是不明白, get_fake_object干了什么qwq...)"; \
-            (void)"// 先是将他们打包, 然后结构化绑定 到__VA_ARGS__"; \
+            (void)"// 获取 T也就是struct的全局静态引用, 然后将其 成员变量 结构化绑定 到__VA_ARGS__"; \
             auto &[__VA_ARGS__] = get_fake_object<remove_cvref_t<T>>();                    \
             (void)"// 然后使用 tie 将他们按照左值引用, 绑定为 tuple"; \
             auto ref_tup = std::tie(__VA_ARGS__);                                          \
@@ -293,15 +298,72 @@ constexpr decltype(auto) visit_members(auto &&obj, auto &&visitor) {
     throw;
 }
 
+template <class T>
+std::string getName() {
+    return __PRETTY_FUNCTION__;
+}
+
+template <auto ptr>
+inline constexpr std::string getPtrName() {
+    return __PRETTY_FUNCTION__;
+}
+
 int main() {
-    auto vistPrint = [](auto &&...its) {
-        ((std::cout << its << ' '), ...);
-        std::cout << '\n';
-    };
+    {
+        std::cout << "\n================ 成员值 for-each ================\n";
+        auto vistPrint = [](auto &&...its) {
+            ((std::cout << its << ' '), ...);
+            std::cout << '\n';
+        };
+        Person p{2233, "114514"};
+        visit_members(p, vistPrint);
+    }
 
-    Person p{2233, "114514"};
-    visit_members(p, vistPrint);
+    {
+        std::cout << "\n================ 成员指针 ================\n";
+        int Person::* ptr = &Person::id____;
+        std::cout << getName<decltype(ptr)>() << "\n";
+    }
 
+    {
+        auto&& [a1, a2] = get_fake_object<Person>();
+        std::cout << "\n================ 成员 ================\n";
+        std::cout << getName<decltype(a1)>() << '\n';
+        std::cout << getName<decltype(a2)>() << '\n';
+
+        constexpr auto ref_tup = std::tie(a1, a2);
+        constexpr auto get_ptrs = [](auto &..._refs) {
+            return std::make_tuple(&_refs...);
+        };
+        constexpr auto res = std::apply(get_ptrs, ref_tup);
+        std::cout << "\n================ tuple<> ================\n";
+        std::cout << getName<decltype(res)>() << '\n';
+
+        std::cout << "\n================ get ================\n";
+        [&]<size_t... Is>(std::index_sequence<Is...>) mutable {
+            ((std::cout << getPtrName<std::get<Is>(res)>() << '\n'), ...);
+        }(std::make_index_sequence<2>{});
+
+        // 似乎不需要 wrap ? (GCC)
+        std::cout << "\n================ wrap + get ================\n";
+        [&]<size_t... Is>(std::index_sequence<Is...>) mutable {
+            ((std::cout << getPtrName<wrap(std::get<Is>(res))>() << '\n'), ...);
+        }(std::make_index_sequence<2>{});
+    }
+
+    // {
+    //     using T = remove_cvref_t<Person>;
+    //     constexpr size_t Count = members_count_v<T>;
+    //     std::array<std::string_view, Count> arr;
+    //     constexpr auto tp = struct_to_tuple<T>();
+    //     std::cout << getName<decltype(tp)>() << "\n\n";
+
+    //     [&]<size_t... Is>(std::index_sequence<Is...>) mutable {
+    //         ((std::cout << getPtrName<wrap(std::get<Is>(tp))>() << '\n'), ...);
+    //     }(std::make_index_sequence<Count>{});
+    // }
+
+    std::cout << "\n================ 反射 ================\n";
     constexpr auto arr = get_member_names<Person>();
     for (auto name: arr) {
         std::cout << name << ", ";
