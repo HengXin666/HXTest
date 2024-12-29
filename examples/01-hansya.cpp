@@ -158,7 +158,7 @@ using remove_cvref_t = std::remove_cv_t<std::remove_reference_t<T>>;
 
 template <class T>
 struct wrapper {
-    static inline remove_cvref_t<T> value;
+    static inline remove_cvref_t<T> value {};
 };
 
 /**
@@ -238,6 +238,7 @@ _get_member_names() {
     return arr;
 }
 
+/*
 template <typename T, typename = void>
 struct has_alias_field_names_t : std::false_type {};
 
@@ -261,19 +262,19 @@ inline constexpr auto get_alias_field_names() {
         return std::array<std::string_view, 0>{};
     }
 }
+*/
 
 template <typename T>
-inline constexpr std::array<std::string_view, members_count_v<T>>
-get_member_names() {
+inline constexpr std::array<std::string_view, members_count_v<T>> get_member_names() {
     auto arr = _get_member_names<T>();
-    using U = remove_cvref_t<T>;
-    if constexpr (has_alias_field_names_v<U> ||
-                  has_inner_alias_field_names_v<U>) {
-        constexpr auto alias_arr = get_alias_field_names<U>();
-        for (size_t i = 0; i < alias_arr.size(); i++) {
-            arr[alias_arr[i].index] = alias_arr[i].alias_name;
-        }
-    }
+    // using U = remove_cvref_t<T>;
+    // if constexpr (has_alias_field_names_v<U> ||
+    //               has_inner_alias_field_names_v<U>) {
+    //     constexpr auto alias_arr = get_alias_field_names<U>();
+    //     for (size_t i = 0; i < alias_arr.size(); i++) {
+    //         arr[alias_arr[i].index] = alias_arr[i].alias_name;
+    //     }
+    // }
     return arr;
 }
 
@@ -308,6 +309,14 @@ inline constexpr std::string getPtrName() {
     return __PRETTY_FUNCTION__;
 }
 
+// (全局)静态变量的地址 (指针) 是编译期常量
+// static int staticPtr1 = 114514;
+// static constexpr int staticPtr2;
+// static_assert(
+//     &staticPtr1 != &staticPtr2,
+//     "报错 => 不是编译期常量"
+// );
+
 int main() {
     {
         std::cout << "\n================ 成员值 for-each ================\n";
@@ -321,8 +330,12 @@ int main() {
 
     {
         std::cout << "\n================ 成员指针 ================\n";
-        int Person::* ptr = &Person::id____;
+        constexpr int Person::* ptr = &Person::id____;
+        // 对于 T
         std::cout << getName<decltype(ptr)>() << "\n";
+
+        // 对于 auto
+        std::cout << getPtrName<ptr>() << '\n';
     }
 
     {
@@ -342,13 +355,32 @@ int main() {
         // std::cout << getPtrName<b1>() << '\n';
         // std::cout << getPtrName<b2>() << '\n';
 
+        // 证明 其成员指针是常量
+        static_assert(
+            &get_fake_object<Person>().id____ == &get_fake_object<Person>().id____,
+            "报错 => 不是编译期常量"
+        );
+        // static_assert( // 报错
+        //     get_fake_object<Person>().id____ != get_fake_object<Person>().id____,
+        //     "报错 => 不是编译期常量"
+        // );
+
+        std::cout << &get_fake_object<Person>().id____ << '\n';
+
         constexpr auto ref_tup = std::tie(a1, a2);
         constexpr auto get_ptrs = [](auto &..._refs) {
+            // 需要取地址! 不然不是常量!
+            // 对 全局静态变量取地址, 得到的是常量
             return std::make_tuple(&_refs...);
         };
 
+        // 此处的 ref_tup 是 tuple<成员...>
+        // std::cout << getName<decltype(ref_tup)>() << '\n';
+        // std::cout << getPtrName<std::get<0>(ref_tup)>() << '\n';
+
         // static_assert(std::get<0>(ref_tup) == 0, "");
 
+        // 此处的 res 是 tuple<成员指针...>
         constexpr auto res = std::apply(get_ptrs, ref_tup);
         std::cout << "\n================ tuple<> ================\n";
         std::cout << getName<decltype(res)>() << '\n';
@@ -358,24 +390,12 @@ int main() {
             ((std::cout << getPtrName<std::get<Is>(res)>() << '\n'), ...);
         }(std::make_index_sequence<2>{});
 
-        // 似乎不需要 wrap ? (GCC)
+        // 似乎不需要 wrap ? (GCC) => 因为 Clang 需要? => 好像也可以不需要...
         std::cout << "\n================ wrap + get ================\n";
         [&]<size_t... Is>(std::index_sequence<Is...>) mutable {
             ((std::cout << getPtrName<wrap(std::get<Is>(res))>() << '\n'), ...);
         }(std::make_index_sequence<2>{});
     }
-
-    // {
-    //     using T = remove_cvref_t<Person>;
-    //     constexpr size_t Count = members_count_v<T>;
-    //     std::array<std::string_view, Count> arr;
-    //     constexpr auto tp = struct_to_tuple<T>();
-    //     std::cout << getName<decltype(tp)>() << "\n\n";
-
-    //     [&]<size_t... Is>(std::index_sequence<Is...>) mutable {
-    //         ((std::cout << getPtrName<wrap(std::get<Is>(tp))>() << '\n'), ...);
-    //     }(std::make_index_sequence<Count>{});
-    // }
 
     std::cout << "\n================ 反射 ================\n";
     constexpr auto arr = get_member_names<Person>();
@@ -394,3 +414,59 @@ int main() {
 
     return 0;
 }
+
+/*
+讨论: 为什么需要套一层 Wrapper ?
+回答: 只是一些元模板编程的规范? || 为了更好的 find 变量的位置?
+
+// Clang
+================ get ================
+寻找办法:
+    1. 去掉最后的 ]
+    2. 往前找到 '.' (源码说 ':' 或者 '.')
+    3. 取他们之间的
+std::string getPtrName() [ptr = &value.id____]
+std::string getPtrName() [ptr = &value.name____]
+
+================ wrap + get ================
+寻找办法:
+    1. 去掉最后的 }]
+    2. 往前找到 '.' (源码说 ':' 或者 '.')
+    3. 取他们之间的
+std::string getPtrName() [ptr = Wrapper<int *>{&value.id____}]
+std::string getPtrName() [ptr = Wrapper<basic_string<char, char_traits<char>, allocator<char>> *>{&value.name____}]
+
+// GCC
+================ get ================
+寻找办法:
+    1. 从后往前找 ");"
+    2. 往前找到 ':'
+    3. 取他们之间的
+constexpr std::string getPtrName() [with auto ptr = (& wrapper<Person>::value.Person::id____); std::string = std::__cxx11::basic_string<char>]
+constexpr std::string getPtrName() [with auto ptr = (& wrapper<Person>::value.Person::name____); std::string = std::__cxx11::basic_string<char>]
+
+================ wrap + get ================
+寻找办法:
+    1. 从后往前找 ")}"
+    2. 往前找到 ':'
+    3. 取他们之间的
+constexpr std::string getPtrName() [with auto ptr = Wrapper<int*>{(& wrapper<Person>::value.Person::id____)}; std::string = std::__cxx11::basic_string<char>]
+constexpr std::string getPtrName() [with auto ptr = Wrapper<std::__cxx11::basic_string<char>*>{(& wrapper<Person>::value.Person::name____)}; std::string = std::__cxx11::basic_string<char>]
+
+// MSVC (注意, 它的展开方式还不一样)
+================ get ================
+寻找办法:
+    1. 从后往前找 ">"
+    2. 往前找到 "->"
+    3. 取他们之间的
+constexpr std::string getPtrName()<&value->id____>(void)
+constexpr std::string getPtrName()<&value->name____>(void)
+
+================ wrap + get ================
+寻找办法:
+    1. 从后往前找 "}>"
+    2. 往前找到 "->"
+    3. 取他们之间的
+constexpr std::string getPtrName()<struct Wrapper<int *>{int*:&value->id____}>(void)
+constexpr std::string getPtrName()<struct Wrapper<class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> > *>{class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >*:&value->name____}>(void)
+*/
