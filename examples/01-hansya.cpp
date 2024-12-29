@@ -327,14 +327,28 @@ int main() {
 
     {
         auto&& [a1, a2] = get_fake_object<Person>();
-        std::cout << "\n================ 成员 ================\n";
+        std::cout << "\n================ 成员 T ================\n";
         std::cout << getName<decltype(a1)>() << '\n';
         std::cout << getName<decltype(a2)>() << '\n';
+
+        // static_assert(a1 == 0, ""); // 编译器报错了, 不是常量吗? 实则不然!
+
+        // 编译报错: 需要 auto&& [a1, a2] 为常量
+        // 但是结构化绑定 不支持声明为编译期常量 (即便他们就是编译期常量)
+        // std::cout << "\n================ 成员 auto ================\n";
+        // decltype(a1) b1;
+        // decltype(a2) b2;
+        // std::tie(b1, b2) = get_fake_object<Person>(); // tie只能支持 tuple 和 pair的...
+        // std::cout << getPtrName<b1>() << '\n';
+        // std::cout << getPtrName<b2>() << '\n';
 
         constexpr auto ref_tup = std::tie(a1, a2);
         constexpr auto get_ptrs = [](auto &..._refs) {
             return std::make_tuple(&_refs...);
         };
+
+        // static_assert(std::get<0>(ref_tup) == 0, "");
+
         constexpr auto res = std::apply(get_ptrs, ref_tup);
         std::cout << "\n================ tuple<> ================\n";
         std::cout << getName<decltype(res)>() << '\n';
