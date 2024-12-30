@@ -1,3 +1,21 @@
+/* 反射「はんしゃ」
+ * Copyright Heng_Xin. All rights reserved.
+ *
+ * @Author: Heng_Xin
+ * @Date: 2024-12-31 00:07:20
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *	  https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 #include <array>
 #include <iostream>
 #include <string>
@@ -219,12 +237,17 @@ inline constexpr auto struct_to_tuple() {
     return object_tuple_view_helper<T, members_count_v<T>>::tuple_view();
 }
 
+template <typename T, typename U, size_t... Is>
+inline constexpr void init_arr_with_tuple(U& arr, std::index_sequence<Is...>) {
+    constexpr auto tp = struct_to_tuple<T>();
+    ((arr[Is] = get_member_name<wrap(std::get<Is>(tp))>()), ...);
+}
+
 template <typename T>
-inline constexpr std::array<std::string_view, members_count_v<T>>
-_get_member_names() {
+inline constexpr std::array<std::string_view, members_count_v<T>> _get_member_names() {
     constexpr size_t Count = members_count_v<T>;
     std::array<std::string_view, Count> arr;
-#if __cplusplus >= 202002L && (!defined(_MSC_VER) || _MSC_VER >= 1930)
+#if __cplusplus >= 202002L && (!defined(_MSC_VER) || _MSC_VER >= 1930) // 牢底, 你滴MSVC版本不够...
     // 得到 tuple<成员指针...>
     constexpr auto tp = struct_to_tuple<T>();
 
@@ -300,7 +323,7 @@ constexpr decltype(auto) visit_members(auto &&obj, auto &&visitor) {
 }
 
 template <class T>
-std::string getName() {
+inline constexpr std::string getName() {
     return __PRETTY_FUNCTION__;
 }
 
@@ -316,6 +339,12 @@ inline constexpr std::string getPtrName() {
 //     &staticPtr1 != &staticPtr2,
 //     "报错 => 不是编译期常量"
 // );
+
+// test
+int __main__ = [] {
+    
+    return 0;
+}();
 
 int main() {
     {

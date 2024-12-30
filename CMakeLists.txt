@@ -7,20 +7,14 @@ set(HX_DEBUG_BY_ADDRESS_SANITIZER ON)
 
 # 使用 Address Sanitizer
 if(HX_DEBUG_BY_ADDRESS_SANITIZER AND CMAKE_BUILD_TYPE STREQUAL "Debug")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address")
-  message("=-=-=-=-=-=-= 启用 Address Sanitizer [-fsanitize=address] =-=-=-=-=-=-=")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address")
+    message("=-=-=-=-=-=-= 启用 Address Sanitizer [-fsanitize=address] =-=-=-=-=-=-=")
 endif()
 
-set(CMAKE_C_COMPILER clang)
-set(CMAKE_CXX_COMPILER clang++)
-
-
-#####        ########
-# 请选择编译的示例代码#
-########       ######
-# 部件测试 
-# add_definitions(-DTEXT_MAIN_MAIN)  # 文件: TestMain.cpp
+# 改用 clang 编译器
+# set(CMAKE_C_COMPILER clang)
+# set(CMAKE_CXX_COMPILER clang++)
 
 # 如果没有定义CMAKE_BUILD_TYPE，则设置为Release
 # 可以使用 cmake -DCMAKE_BUILD_TYPE=Debug .. 来指定
@@ -55,32 +49,29 @@ set(LIB_PATH ${PROJECT_SOURCE_DIR}/lib)
 
 set(ROOT_PATH "${PROJECT_SOURCE_DIR}") # 设置根项目的根目录
 # 在camke .. 的时候会输出提示目录路径 (可选)
-message (STATUS "Prefix dir is ${CMAKE_INSTALL_PREFIX}")
-message (STATUS "Binary dir is ${PROJECT_BINARY_DIR}")
-message (STATUS "Source dir is ${PROJECT_SOURCE_DIR}")
-message (STATUS "ROOT_PATH dir is ${ROOT_PATH}")
+message(STATUS "Prefix dir is ${CMAKE_INSTALL_PREFIX}")
+message(STATUS "Binary dir is ${PROJECT_BINARY_DIR}")
+message(STATUS "Source dir is ${PROJECT_SOURCE_DIR}")
+message(STATUS "ROOT_PATH dir is ${ROOT_PATH}")
 
-# 设置文件名称
-set (appName HXTest)
+# 设置编译出来的可执行程序的名称
+set(appName HXTest)
 
-# 递归查找
-file(GLOB_RECURSE srcs CONFIGURE_DEPENDS 
-    src/*.cpp 
-    include/*.h
-    include/*.hpp
-    examples/*.cpp
-)
+#####        ##############
+# 添加子项目, 然后选择性编译#
+########       ###########
+# === begin === 添加子目录 === begin === #
+option(BUILD_01_REFLECTION "Build 01-reflection" ON)
 
-# 编译可执行文件
-add_executable (${appName} ${srcs})
+if(BUILD_01_REFLECTION)
+    add_subdirectory(src/01-reflection)
+    message("Build 01-reflection")
+endif()
+
+# === end === 添加子目录 === end === #
 
 # 设置头文件路径
-include_directories(${ROOT_PATH}/include)
+# include_directories(${ROOT_PATH}/include)
 
-# 将include目录添加到HXHttp库的公共包含目录中
-target_include_directories(HXTest PUBLIC include)
-
-# 使用 Address Sanitizer
-if(HX_DEBUG_BY_ADDRESS_SANITIZER AND CMAKE_BUILD_TYPE STREQUAL "Debug")
-    target_compile_options(HXTest PRIVATE -fsanitize=address)
-endif()
+# 将include目录添加到HXTest库的公共包含目录中
+# target_include_directories(HXTest PUBLIC include)
