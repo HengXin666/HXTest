@@ -17,8 +17,8 @@
 ```C++
 // 这个是一个聚合类
 struct Man {
-	int id;
-	std::string name;
+    int id;
+    std::string name;
 };
 ```
 
@@ -62,7 +62,7 @@ consteval auto membersCount() { // consteval C++20 关键字, 要求该函数必
 }
 
 int main() {
-	std::cout << membersCount<Man>() << '\n'; // 2
+    std::cout << membersCount<Man>() << '\n'; // 2
 }
 ```
 
@@ -94,8 +94,8 @@ auto [id, name] = Man{114, "514"};
 
 ```C++
 constexpr decltype(auto) visit_members(
-	auto &&obj,
-	auto &&visitor
+    auto &&obj,
+    auto &&visitor
 ) {
     // 去除&&、&、const, 以获取实际类型
     using ObjType = std::remove_cv_t<std::remove_reference_t<decltype(obj)>>;
@@ -189,11 +189,11 @@ int __main__ = [] {
 ```C++
 int __main__ = [] {
     static const /*constexpr*/ Man man {0, "0"};
-	// constexpr std::string getPtrName() [with auto ptr = (& man.Man::id); std::string = std::__cxx11::basic_string<char>]
+    // constexpr std::string getPtrName() [with auto ptr = (& man.Man::id); std::string = std::__cxx11::basic_string<char>]
     std::cout << getPtrName<&man.id>() << '\n';
 
     static int staticPtr = 114514;
-	// constexpr std::string getPtrName() [with auto ptr = (& staticPtr); std::string = std::__cxx11::basic_string<char>]
+    // constexpr std::string getPtrName() [with auto ptr = (& staticPtr); std::string = std::__cxx11::basic_string<char>]
     std::cout << getPtrName<&staticPtr>() << '\n';
     return 0;
 }();
