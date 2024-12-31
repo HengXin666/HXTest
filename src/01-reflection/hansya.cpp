@@ -303,7 +303,7 @@ inline constexpr std::array<std::string_view, members_count_v<T>> get_member_nam
 
 constexpr decltype(auto) visit_members(auto &&obj, auto &&visitor) {
     // 去除引用, 获取实际类型
-    using ObjType = std::remove_reference_t<decltype(obj)>;
+    using ObjType = std::remove_cv_t<std::remove_reference_t<decltype(obj)>>;
     constexpr auto Cnt = member_count<ObjType>();
 
     // 用宏实现!, 见上面
@@ -342,7 +342,17 @@ inline constexpr std::string getPtrName() {
 
 // test
 int __main__ = [] {
-    
+    // 这个是一个聚合类
+    struct Man {
+        int id;
+        std::string name;
+    };
+    return 0;
+    static const Man man {0, "0"};
+    std::cout << getPtrName<&man.id>() << '\n';
+
+    static int staticPtr = 114514;
+    std::cout << getPtrName<&staticPtr>() << '\n';
     return 0;
 }();
 
