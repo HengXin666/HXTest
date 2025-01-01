@@ -20,9 +20,9 @@ endif()
 # 可以使用 cmake -DCMAKE_BUILD_TYPE=Debug .. 来指定
 if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
-    message("=-=-=-=-=-=-=当前是 [Release] 模式=-=-=-=-=-=-=")
+    message("=-=-=-=-=-=-= 当前是 [Release] 模式 =-=-=-=-=-=-=")
 else()
-    message("=-=-=-=-=-=-=当前是 [DEBUG] 模式=-=-=-=-=-=-=")
+    message("=-=-=-=-=-=-= 当前是 [DEBUG] 模式 =-=-=-=-=-=-=")
     add_definitions(-D_HX_DEBUG_) # 添加一个 _HX_DEBUG_ 宏
     message("已添加宏: _HX_DEBUG_")
 endif()
@@ -65,7 +65,7 @@ option(BUILD_01_REFLECTION "Build 01-reflection" ON)
 
 if(BUILD_01_REFLECTION)
     add_subdirectory(src/01-reflection)
-    message("Build 01-reflection")
+    message("=-=-=-=-=-=-= Build 01-reflection =-=-=-=-=-=-=")
 endif()
 
 # === end === 添加子目录 === end === #
