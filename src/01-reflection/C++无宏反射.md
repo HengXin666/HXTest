@@ -68,6 +68,9 @@ int main() {
 
 > $总结$: 现在我们有了一种获取类的成员变量 **个数** 的方法.
 
+> [!TIP]
+> 如果不使用C++20的`requires`, 理论上应该可以使用`decltype(T{Any{}})`的思路, 但是我不会...
+
 ### 1.2 C++17 结构化绑定
 
 - [cppreference-结构化绑定](https://cppreference.cn/w/cpp/language/structured_binding)
@@ -213,6 +216,8 @@ int __main__ = [] {
 6. 返回, 剩下的就任君处置~
 
 ### 2.2 雅兰亭库
+
+- 见视频 ...
 
 ## 三、局限性
 
