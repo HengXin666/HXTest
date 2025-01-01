@@ -35,7 +35,7 @@ option(BUILD_${BUILD_NAME} \"Build $NAME\" ON)
 
 if(BUILD_${BUILD_NAME})
     add_subdirectory(src/$NAME)
-    message("=-=-=-=-=-=-= Build $NAME =-=-=-=-=-=-=")
+    message(\"=-=-=-=-=-=-= Build $NAME =-=-=-=-=-=-=\")
 endif()
 "
 

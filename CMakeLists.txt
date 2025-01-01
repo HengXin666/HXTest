@@ -68,6 +68,13 @@ if(BUILD_01_REFLECTION)
     message("=-=-=-=-=-=-= Build 01-reflection =-=-=-=-=-=-=")
 endif()
 
+option(BUILD_01_HANSYA_LIVE "Build 01-hansya-live" ON)
+
+if(BUILD_01_HANSYA_LIVE)
+    add_subdirectory(src/01-hansya-live)
+    message("=-=-=-=-=-=-= Build 01-hansya-live =-=-=-=-=-=-=")
+endif()
+
 # === end === 添加子目录 === end === #
 
 # 设置头文件路径
