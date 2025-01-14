@@ -75,6 +75,20 @@ if(BUILD_01_HANSYA_LIVE)
     message("=-=-=-=-=-=-= Build 01-hansya-live =-=-=-=-=-=-=")
 endif()
 
+option(BUILD_01_HANSYA_PRIME "Build 01-hansya-prime" ON)
+
+if(BUILD_01_HANSYA_PRIME)
+    add_subdirectory(src/01-hansya-prime)
+    message("=-=-=-=-=-=-= Build 01-hansya-prime =-=-=-=-=-=-=")
+endif()
+
+option(BUILD_02_LINK_PROPERTY "Build 02-link-property" ON)
+
+if(BUILD_02_LINK_PROPERTY)
+    add_subdirectory(src/02-link-property)
+    message("=-=-=-=-=-=-= Build 02-link-property =-=-=-=-=-=-=")
+endif()
+
 # === end === 添加子目录 === end === #
 
 # 设置头文件路径
