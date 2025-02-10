@@ -57,6 +57,8 @@ message(STATUS "ROOT_PATH dir is ${ROOT_PATH}")
 # 设置编译出来的可执行程序的名称
 set(appName HXTest)
 
+include_directories(include)
+
 #####        ##############
 # 添加子项目, 然后选择性编译#
 ########       ###########
@@ -87,6 +89,13 @@ option(BUILD_02_LINK_PROPERTY "Build 02-link-property" ON)
 if(BUILD_02_LINK_PROPERTY)
     add_subdirectory(src/02-link-property)
     message("=-=-=-=-=-=-= Build 02-link-property =-=-=-=-=-=-=")
+endif()
+
+option(BUILD_03_RANDOM "Build 03-random" ON)
+
+if(BUILD_03_RANDOM)
+    add_subdirectory(src/03-random)
+    message("=-=-=-=-=-=-= Build 03-random =-=-=-=-=-=-=")
 endif()
 
 # === end === 添加子目录 === end === #
