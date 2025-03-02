@@ -89,6 +89,13 @@ if(BUILD_02_LINK_PROPERTY)
     message("=-=-=-=-=-=-= Build 02-link-property =-=-=-=-=-=-=")
 endif()
 
+option(BUILD_03_TBB "Build 03-tbb" ON)
+
+if(BUILD_03_TBB)
+    add_subdirectory(src/03-tbb)
+    message("=-=-=-=-=-=-= Build 03-tbb =-=-=-=-=-=-=")
+endif()
+
 # === end === 添加子目录 === end === #
 
 # 设置头文件路径
