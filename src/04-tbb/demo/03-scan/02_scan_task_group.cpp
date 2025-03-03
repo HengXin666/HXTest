@@ -36,7 +36,7 @@ int main() {
         }
 
         tbb::task_group tg2;
-        // 补回边界的缩并
+        // 前缀和补全, 以第i - 1块的和(tmp_res[t]), 作为第i块的初始值
         for (size_t t = 1; t < maxt; t++) {
             size_t beg = t * n / maxt - 1;
             size_t end = std::min(n, (t + 1) * n / maxt) - 1;
