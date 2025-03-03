@@ -107,8 +107,5 @@ endif()
 
 # === end === 添加子目录 === end === #
 
-# 设置头文件路径
-# include_directories(${ROOT_PATH}/include)
-
 # 将include目录添加到HXTest库的公共包含目录中
 # target_include_directories(HXTest PUBLIC include)
