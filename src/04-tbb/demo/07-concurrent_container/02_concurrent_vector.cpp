@@ -2,7 +2,6 @@
 #include <cmath>
 #include <tbb/blocked_range.h>
 #include <tbb/concurrent_vector.h>
-#include <tbb/co>
 #include <tbb/parallel_for.h>
 
 #include <HXSTL/utils/TickTock.hpp>

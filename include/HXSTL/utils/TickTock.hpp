@@ -17,8 +17,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef _HX_TICKTOCK_H_
-#define _HX_TICKTOCK_H_
+#ifndef _HX_TICK_TOCK_H_
+#define _HX_TICK_TOCK_H_
 
 #include <chrono>
 #include <string>
@@ -73,4 +73,4 @@ extern void notOptimized(T&&);
 
 }}} // namespace HX::STL::utils
 
-#endif // !_HX_TICKTOCK_H_
+#endif // !_HX_TICK_TOCK_H_
