@@ -8,6 +8,7 @@
 int main() {
     size_t n = 1 << 14;
     std::vector<float> arr(n * n);
+    std::vector<float> brr(n * n);
     {
         tbb::task_arena ta(4);
         HX::STL::utils::TickTock<> _{"tbb::auto_partitioner: 默认矩阵转置"};
@@ -16,7 +17,7 @@ int main() {
             [&](tbb::blocked_range2d<size_t> r) {
                 for (size_t i = r.cols().begin(); i < r.cols().end(); ++i) {
                     for (size_t j = r.rows().begin(); j < r.rows().end(); ++j) {
-                        arr[i * n + j] = arr[j * n + i];
+                        brr[i * n + j] = arr[j * n + i];
                     }
                 }
             }, tbb::auto_partitioner{});
@@ -31,7 +32,7 @@ int main() {
             [&](tbb::blocked_range2d<size_t> r) {
                 for (size_t i = r.cols().begin(); i < r.cols().end(); ++i) {
                     for (size_t j = r.rows().begin(); j < r.rows().end(); ++j) {
-                        arr[i * n + j] = arr[j * n + i];
+                        brr[i * n + j] = arr[j * n + i];
                     }
                 }
             }, tbb::simple_partitioner{});
