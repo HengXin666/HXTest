@@ -25,7 +25,6 @@
 #include <variant>
 #include <span>
 #include <format>
-#include <vector>
 #include <cmath>
 
 #include <HXSTL/concepts/KeyValueContainer.hpp>
@@ -511,12 +510,12 @@ template <typename T, std::size_t N>
     requires (std::same_as<T, wchar_t>)
 struct ToString<T[N]> {
     static std::string toString(const T (&str)[N]) {
-        return ToString<std::wstring>::toString(std::wstring{str, N - 1}); // - 1 是为了去掉 '\0'
+        return toByteString(std::wstring{str, N - 1}); // - 1 是为了去掉 '\0'
     }
 
     template <typename Stream>
     static void toString(const T (&str)[N], Stream& s) {
-        ToString<std::wstring>::toString(std::wstring{str, N - 1}, s); // - 1 是为了去掉 '\0'
+        s.append(toByteString(std::wstring{str, N - 1})); // - 1 是为了去掉 '\0'
     }
 };
 
@@ -539,12 +538,12 @@ template <typename T>
     requires (std::same_as<const T*, const wchar_t*>)
 struct ToString<const T*> {
     static std::string toString(const T* const& str) {
-        return ToString<std::wstring>::toString(std::wstring {str});
+        return toByteString(std::wstring{str});
     }
 
     template <typename Stream>
     static void toString(const T* const& str, Stream& s) {
-        return ToString<std::wstring>::toString(std::wstring {str}, s);
+        s.append(toByteString(std::wstring{str}));
     }
 };
 

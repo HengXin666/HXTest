@@ -21,6 +21,7 @@
 #define _HX_SINGLE_ELEMENT_CONTAINER_H_
 
 #include <HXSTL/concepts/StringType.hpp>
+#include <HXSTL/concepts/KeyValueContainer.hpp>
 
 namespace HX { namespace STL { namespace concepts {
 
@@ -28,7 +29,8 @@ namespace HX { namespace STL { namespace concepts {
 template <typename T>
 concept SingleElementContainer = requires(T t) {
     typename T::value_type;
-} && !(HX::STL::concepts::StringType<T> || HX::STL::concepts::WStringType<T>);
+} && !KeyValueContainer<T>
+  && !(HX::STL::concepts::StringType<T> || HX::STL::concepts::WStringType<T>);
 
 }}} // HX::STL::concepts
 
