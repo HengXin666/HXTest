@@ -28,7 +28,7 @@ namespace HX { namespace STL { namespace concepts {
 template <typename T>
 concept SingleElementContainer = requires(T t) {
     typename T::value_type;
-} && !HX::STL::concepts::StringType<T>;
+} && !(HX::STL::concepts::StringType<T> || HX::STL::concepts::WStringType<T>);
 
 }}} // HX::STL::concepts
 
