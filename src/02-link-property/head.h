@@ -34,7 +34,7 @@ inline void look(const std::string& str) {
 
 inline int i;
 
-void fun();
+void fun1();
 
 struct Dog {
     // inline 下面和上面至少 二选一

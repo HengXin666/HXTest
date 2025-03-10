@@ -12,7 +12,7 @@ inline void myShow() {
 }
 
 int main() {
-    fun();
+    fun1();
     printf("main -> i: %d\n", ++i);
     printf("main看到的 %p\n", &look);
     look("main");
