@@ -12,13 +12,6 @@ if(BUILD_01_HANSYA_LIVE)
     message("=-=-=-=-=-=-= Build 01-hansya-live =-=-=-=-=-=-=")
 endif()
 
-option(BUILD_01_HANSYA_PRIME "Build 01-hansya-prime" ON)
-
-if(BUILD_01_HANSYA_PRIME)
-    add_subdirectory(src/01-hansya-prime)
-    message("=-=-=-=-=-=-= Build 01-hansya-prime =-=-=-=-=-=-=")
-endif()
-
 option(BUILD_02_LINK_PROPERTY "Build 02-link-property" ON)
 
 if(BUILD_02_LINK_PROPERTY)
@@ -45,4 +38,11 @@ option(BUILD_05_EXCEPTION "Build 05-exception" ON)
 if(BUILD_05_EXCEPTION)
     add_subdirectory(src/05-exception)
     message("=-=-=-=-=-=-= Build 05-exception =-=-=-=-=-=-=")
+endif()
+
+option(BUILD_06_STD_ANALYSE "Build 06-std-analyse" ON)
+
+if(BUILD_06_STD_ANALYSE)
+    add_subdirectory(src/06-std-analyse)
+    message("=-=-=-=-=-=-= Build 06-std-analyse =-=-=-=-=-=-=")
 endif()

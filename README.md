@@ -11,3 +11,10 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
 3. [C++11现代伪随机数生成](./src/03-random/现代伪随机数生成.md)
 
 4. [tbb-理解常用并行算法及其实现原理](./src/04-tbb/tbb-理解常用并行算法及其实现原理.md)
+
+5. [现代C++异常与`noexcept`表达式 (仅写了代码)](./src/05-exception/demo/01-noexcept/01_main.cpp)
+
+6. 长期需更新: std的剖析! (包含一些stl源码的实现)
+    - 01-constexpr `编译期操作`
+        - [编译期if](./src/06-std-analyse/demo/01-constexpr/01_if.cpp) (待更新C++11的基于模版的实现)
+        - [编译期for](./src/06-std-analyse/demo/01-constexpr/02_for.cpp) (递归/迭代的实现) (内含`std::make_index_constexpr系列`と`std::visit`の秘密)
