@@ -19,4 +19,4 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
         - [编译期if](./src/06-std-analyse/demo/01-constexpr/01_if.cpp) (待更新C++11的基于模版的实现)
         - [编译期for](./src/06-std-analyse/demo/01-constexpr/02_for.cpp) (递归/迭代的实现) (内含`std::make_index_constexpr系列`と`std::visit`の秘密)
     - 02-tuple
-        - [tuple](./src/06-std-analyse/demo/02-tuple/01_tuple.cpp) (包含`get(tuple)`、`tuple_size_v`、`make_tuple`的实现, *~~引用多态真奇妙~~*)
+        - [tuple](./src/06-std-analyse/demo/02-tuple/01_tuple.cpp) (包含`get(tuple)`、`tuple_size_v`、`make_tuple`、`tie`的实现, *~~引用多态真奇妙~~*)
