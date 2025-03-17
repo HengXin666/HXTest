@@ -1,5 +1,10 @@
 #include <HXprint/print.h>
 
+// 删除拷贝赋值函数以优化, 如果注释掉下面的宏, 则使用拷贝赋值函数
+// 拷贝复制 = 拷贝构造 + 移动复制
+// 但是需要显式调用构造函数或者std::move()
+#define DELETE_COPY_ASSIGNMENT_FUNCTION_TO_OPTIMIZE
+
 template <size_t Idx, typename... Ts>
 struct _tuple;
 
@@ -26,7 +31,8 @@ struct is_nested_tuple : std::false_type {};
 
 template <size_t Idx, typename U, typename... Us>
 struct is_nested_tuple<_tuple<Idx, U, Us...>> 
-    : is_tuple<std::remove_cvref_t<U>> {};
+    : is_tuple<std::remove_cvref_t<U>> 
+{};
 
 template <typename T>
 constexpr bool is_nested_tuple_v = is_nested_tuple<std::remove_cvref_t<T>>::value;
@@ -71,9 +77,8 @@ struct _tuple<Idx, T, Ts...>
     template <typename... Us>
     static constexpr bool _disambiguating_constraint() noexcept {
         if constexpr (sizeof...(Us) == 1) {
-            // 说明 tuple<Ts...> 把 tuple<tuple<Us...>> 放进啦
-            // tuple<int> 却 tuple<tuple<int&>>
             using fk_tp = typename internal::get_type<Us...>::type;
+            // 如果它是单单的非嵌套的tuple, 则为false
             return !(internal::is_tuple_v<fk_tp> && !internal::is_nested_tuple_v<fk_tp>);
         } else {
             return true;
@@ -113,7 +118,12 @@ struct _tuple<Idx, T, Ts...>
     constexpr _tuple(const _tuple&) = default;
     constexpr _tuple(_tuple&&) = default;
 
-    constexpr _tuple& operator=(const _tuple&) = delete;
+#ifdef DELETE_COPY_ASSIGNMENT_FUNCTION_TO_OPTIMIZE
+    constexpr _tuple& operator=(const _tuple&) = delete; // 删除默认拷贝赋值
+#endif
+#ifndef DELETE_COPY_ASSIGNMENT_FUNCTION_TO_OPTIMIZE
+    constexpr _tuple& operator=(const _tuple&) = default;
+#endif
     constexpr _tuple& operator=(_tuple&&) = default;
 
     static constexpr const T& _get_head(const _tuple& t) noexcept {
@@ -134,6 +144,7 @@ struct _tuple<Idx, T, Ts...>
     }
 
     // assign 赋值
+#ifndef DELETE_COPY_ASSIGNMENT_FUNCTION_TO_OPTIMIZE
     template <typename U, typename... Us, 
         typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us))>>
     constexpr void _assign(const _tuple<Idx, U, Us...>& that) noexcept {
@@ -142,6 +153,7 @@ struct _tuple<Idx, T, Ts...>
             _tuple<Idx + 1, Ts...>::_assign(_tuple<Idx, U, Us...>::_get_tail(that));
         }
     }
+#endif
 
     template <typename U, typename... Us, 
         typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us))>>
@@ -173,7 +185,7 @@ struct tuple : public _tuple<0, Ts...> {
 
     template <typename... Us, 
         typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us)
-            && _disambiguating_constraint<Us...>()
+            // && _disambiguating_constraint<Us...>()
             && std::conjunction_v<std::is_convertible<Us, Ts>...>)>> // 允许隐式转换, 方可使用
     constexpr tuple(Us&&... ts)
         : _tuple<0, Ts...>(std::forward<Us>(ts)...)
@@ -184,22 +196,28 @@ struct tuple : public _tuple<0, Ts...> {
         typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us)
             && !std::is_same_v<tuple<Ts...>, tuple<Us...>>)>>
     constexpr tuple(const tuple<Us...>& t)
-        : _tuple<0, Ts...>(t)
-    {}
+        : _tuple<0, Ts...>(static_cast<const _tuple<0, Us...>&>(t)) // 此处需要转换类型为基类
+    {}                                                              // 否则模版不匹配, 就会匹配到 Us&& 上
 
     template <typename... Us, 
         typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us)
             && !std::is_same_v<tuple<Ts...>, tuple<Us...>>)>>
     constexpr tuple(tuple<Us...>&& t)
-        : _tuple<0, Ts...>(std::move(t))
+        : _tuple<0, Ts...>(std::move(static_cast<_tuple<0, Us...>>(t)))
     {}
 
     constexpr tuple(const tuple&) = default;
     constexpr tuple(tuple&&) = default;
 
+#ifdef DELETE_COPY_ASSIGNMENT_FUNCTION_TO_OPTIMIZE
     constexpr tuple& operator=(const tuple&) = delete; // 禁止拷贝复制
+#endif
+#ifndef DELETE_COPY_ASSIGNMENT_FUNCTION_TO_OPTIMIZE
+    constexpr tuple& operator=(const tuple&) = default; // 禁止拷贝复制
+#endif
     constexpr tuple& operator=(tuple&&) = default;
 
+#ifndef DELETE_COPY_ASSIGNMENT_FUNCTION_TO_OPTIMIZE
     template <typename... Us, 
         typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us) 
             && !std::is_same_v<tuple<Ts...>, tuple<Us...>>)>>
@@ -207,6 +225,7 @@ struct tuple : public _tuple<0, Ts...> {
         this->template _assign<Us...>(that);
         return *this;
     }
+#endif
 
     template <typename... Us, 
         typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us) 
@@ -321,7 +340,7 @@ struct Test {
     constexpr Test(const Test&) = default;
     constexpr Test(Test&&) = default;
 
-    constexpr Test& operator=(const Test&) = default;
+    constexpr Test& operator=(const Test&) = delete;
     constexpr Test& operator=(Test&&) = default;
 
     T t;
@@ -341,10 +360,16 @@ int main() {
     } {
         Test<int> t1(1);
         Test<int> t2(2);
-        t1 = t2;
+        t1 = Test<int>{t2};
     }
 
-    tuple<int, double, tuple<std::string, int>> t{1, 3.14, tuple<std::string, int>{"awa", 1}};
+    tuple<int, double, tuple<std::string, int>> t{
+        1, 
+        3.14, 
+        tuple<std::string, int> // 为什么需要指定类型, 才可以推导?
+        {"awa", 1}
+    };
+
     const auto& tv = t;
     auto& res = get<0>(get<2>(tv));
     HX::print::println("get<1>: ", res, ", tv cnt = ", cnt_tuple_v<decltype(tv)>);
@@ -368,19 +393,25 @@ int main() {
         }
         tuple<int&> t3{a};
         tuple<int> t4{t3};
+
+#ifdef DELETE_COPY_ASSIGNMENT_FUNCTION_TO_OPTIMIZE 
         t1 = std::move(t2);
+        t1 = std::move(t2);
+        t3 = tuple<int>{t1};
+#endif
+#ifndef DELETE_COPY_ASSIGNMENT_FUNCTION_TO_OPTIMIZE 
+        t1 = t2;
+        t1 = t3;
+        t3 = t1;
+#endif
 
-        HX::print::println("std::conjunction_v<std::is_convertible<Us, Ts>...> ", 
+        HX::print::println("std::conjunction_v<std::is_convertible<int, int&>> ", 
             std::conjunction_v<std::is_convertible<int, int&>>);
-        HX::print::println("std::conjunction_v<std::is_convertible<Us, Ts>...> ", 
+        HX::print::println("std::conjunction_v<std::is_convertible<tuple<int>, tuple<int&>>> ", 
             std::conjunction_v<std::is_convertible<tuple<int>, tuple<int&>>>);
-        HX::print::println("std::conjunction_v<std::is_convertible<Us, Ts>...> ", 
+        HX::print::println("std::conjunction_v<std::is_convertible<std::tuple<int>, std::tuple<int&>>> ", 
             std::conjunction_v<std::is_convertible<std::tuple<int>, std::tuple<int&>>>);
-        // 拷贝复制 = 拷贝构造 + 移动复制
-        // 为什么不行?!
-        // t2 = t3;
-
-        // (void)t4;
+        (void)t4;
     }
     return 0;
 }
