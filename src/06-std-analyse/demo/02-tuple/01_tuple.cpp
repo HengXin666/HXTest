@@ -229,7 +229,7 @@ struct tuple : public _tuple<0, Ts...> {
 
     template <typename... Us, 
         typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us) 
-            && !std::is_same_v<tuple<Ts...>, tuple<Us...>>)>>
+            )>>
     constexpr tuple& operator=(tuple<Us...>&& that) noexcept {
         this->_assign(std::move(that));
         return *this;
@@ -304,9 +304,45 @@ constexpr std::size_t cnt_tuple_v = _cnt_tuple_v<std::decay_t<T>>::_cnt_v();
 
 // === std::make_tuple === {
 
+namespace internal {
+
+// 这个`reference_wrapper`配合`ref`的, 以后再搞, 涉及到一个类型等价判断的...
+template <typename T>
+struct reference_wrapper {
+    constexpr reference_wrapper(T& _t) : t(_t) {}
+
+    T& t;
+};
+
+// 推导规则
+template <typename T>
+reference_wrapper(T&) -> reference_wrapper<T>;
+
+template <typename T>
+struct reference_wrapper_and_strip {
+    using type = T;
+};
+
+template <typename T>
+struct reference_wrapper_and_strip<std::reference_wrapper<T>> { // 如果有 std::reference_wrapper 才是引用
+    using type = T&;                                            // std::reference_wrapper 是 std::ref 的返回值
+};
+
+template <typename T>
+using decay_and_strip_v = reference_wrapper_and_strip<std::decay_t<T>>::type;
+
+} // namespace internal
+
+template <typename T>
+inline constexpr internal::reference_wrapper<T> ref(T& t) noexcept {
+    return internal::reference_wrapper<T>{t};
+}
+
+// 标准库的 make_tuple 默认推导 Ts... 是不带 const 和 v 以及 (&)[] 的
 template <typename... Ts>
-constexpr tuple<Ts...> make_tuple(Ts&&... ts) noexcept {
-    return tuple<Ts...>{std::forward<Ts>(ts)...};
+constexpr tuple<typename internal::decay_and_strip_v<Ts>...> make_tuple(Ts&&... ts) noexcept {
+    using resType = tuple<typename internal::decay_and_strip_v<Ts>...>;
+    return resType{std::forward<Ts>(ts)...};
 }
 
 // } === std::make_tuple ===
@@ -346,8 +382,7 @@ struct Test {
     T t;
 };
 
-int main() {
-    {
+int __test__ = []() {{
         int a = 1;
         Test<int> t1 (1);
         Test<int&> t2 (a);
@@ -362,7 +397,10 @@ int main() {
         Test<int> t2(2);
         t1 = Test<int>{t2};
     }
+    return 0;
+} ();
 
+int main() {
     tuple<int, double, tuple<std::string, int>> t{
         1, 
         3.14, 
@@ -382,6 +420,18 @@ int main() {
     int a = 0, b = 0, c = 0;
     tie(a, b, c) = make_tuple(1, 2, 3);
     HX::print::println("auto [a, b, c] = ", a, " ", b, " ", c);
+
+    {
+        int& i = a, j = b;
+        int k = c;
+        auto mp = ::make_tuple(i, std::ref(j), k);
+        auto std_mp = std::make_tuple(i, std::ref(j), k);
+        i = 114;
+        j = 514;
+        k = 666;
+        HX::print::println("<HX>  auto [i, j, k] = ", get<0>(mp), " ", get<1>(mp), " ", get<2>(mp));
+        HX::print::println("<std> auto [i, j, k] = ", get<0>(std_mp), " ", get<1>(std_mp), " ", get<2>(std_mp));
+    }
 
     {
         int a = 123;
