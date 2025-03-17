@@ -3,6 +3,36 @@
 template <size_t Idx, typename... Ts>
 struct _tuple;
 
+namespace internal {
+
+template <typename T>
+struct get_type {
+    using type = T;
+};
+
+// 判断某个类型是否为 _tuple 实例
+template <typename T>
+struct is_tuple : std::false_type {};
+
+template <size_t Idx, typename T, typename... Ts>
+struct is_tuple<_tuple<Idx, T, Ts...>> : std::true_type {};
+
+template <typename T>
+constexpr bool is_tuple_v = is_tuple<std::remove_cvref_t<T>>::value;
+
+// 判断 _tuple 的头元素是否也是 _tuple
+template <typename T>
+struct is_nested_tuple : std::false_type {};
+
+template <size_t Idx, typename U, typename... Us>
+struct is_nested_tuple<_tuple<Idx, U, Us...>> 
+    : is_tuple<std::remove_cvref_t<U>> {};
+
+template <typename T>
+constexpr bool is_nested_tuple_v = is_nested_tuple<std::remove_cvref_t<T>>::value;
+
+} // namespace internal
+
 template <size_t Idx>
 struct _tuple<Idx> {};
 
@@ -14,6 +44,12 @@ struct _tuple_head_base {
     constexpr _tuple_head_base(U&& _t) noexcept
         : t(std::forward<U>(_t))
     {}
+
+    template <typename U = T>
+    constexpr T& operator=(const _tuple_head_base<Idx, U>& that) noexcept {
+        t = that.t;
+        return *this;
+    }
 
     static constexpr const T& _get_t(const _tuple_head_base& t) noexcept {
         return t.t;
@@ -32,23 +68,30 @@ struct _tuple<Idx, T, Ts...>
     using _head = _tuple_head_base<Idx, T>;
     using _tail = _tuple<Idx + 1, Ts...>;
 
+    template <typename... Us>
+    static constexpr bool _disambiguating_constraint() noexcept {
+        if constexpr (sizeof...(Us) == 1) {
+            // 说明 tuple<Ts...> 把 tuple<tuple<Us...>> 放进啦
+            // tuple<int> 却 tuple<tuple<int&>>
+            using fk_tp = typename internal::get_type<Us...>::type;
+            return !(internal::is_tuple_v<fk_tp> && !internal::is_nested_tuple_v<fk_tp>);
+        } else {
+            return true;
+        }
+    }
+
     constexpr explicit _tuple() noexcept
         : _tuple<Idx + 1, Ts...>()
         , _tuple_head_base<Idx, T>()
     {}
 
     template <typename U, typename... Us, 
-        typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us))>>
+        typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us)
+            && _disambiguating_constraint<U, Us...>()
+            && std::conjunction_v<std::is_convertible<Us, Ts>...>)>>
     constexpr explicit _tuple(U&& t, Us&&... ts) noexcept
         : _tuple<Idx + 1, Ts...>(std::forward<Us>(ts)...)
         , _tuple_head_base<Idx, T>(std::forward<U>(t))
-    {}
-
-    template <typename U, typename... Us, 
-        typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us))>>
-    constexpr explicit _tuple(_tuple<Idx, U, Us...>& t) noexcept
-        : _tuple<Idx + 1, Ts...>(_tuple<Idx, U, Us...>::_get_tail(t))
-        , _tuple_head_base<Idx, T>(_tuple<Idx, U, Us...>::_get_head(t))
     {}
 
     template <typename U, typename... Us, 
@@ -60,7 +103,8 @@ struct _tuple<Idx, T, Ts...>
     {}
 
     template <typename U, typename... Us, 
-        typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us))>>
+        typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us)
+            && !std::is_same_v<_tuple<Idx, T, Ts...>, _tuple<Idx, U, Us...>>)>>
     constexpr explicit _tuple(_tuple<Idx, U, Us...>&& t) noexcept
         : _tuple<Idx + 1, Ts...>(std::move(_tuple<Idx, U, Us...>::_get_tail(t)))
         , _tuple_head_base<Idx, T>(std::move(_tuple<Idx, U, Us...>::_get_head(t)))
@@ -69,7 +113,7 @@ struct _tuple<Idx, T, Ts...>
     constexpr _tuple(const _tuple&) = default;
     constexpr _tuple(_tuple&&) = default;
 
-    constexpr _tuple& operator=(const _tuple&) = delete; // 禁止拷贝赋值
+    constexpr _tuple& operator=(const _tuple&) = delete;
     constexpr _tuple& operator=(_tuple&&) = default;
 
     static constexpr const T& _get_head(const _tuple& t) noexcept {
@@ -90,14 +134,14 @@ struct _tuple<Idx, T, Ts...>
     }
 
     // assign 赋值
-    // template <typename U, typename... Us, typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us))>>
-    // constexpr void _assign(const _tuple<Idx, U, Us...>& that) noexcept {
-    //     HX::print::println(sizeof...(Us), " ", Idx);
-    //     _get_head(*this) = _tuple<Idx, U, Us...>::_get_head(that);
-    //     if constexpr (sizeof...(Us) > 0) {
-    //         _tuple<Idx + 1, Ts...>::_assign(_tuple<Idx, U, Us...>::_get_tail(that));
-    //     }
-    // }
+    template <typename U, typename... Us, 
+        typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us))>>
+    constexpr void _assign(const _tuple<Idx, U, Us...>& that) noexcept {
+        _get_head(*this) = _tuple<Idx, U, Us...>::_get_head(that);
+        if constexpr (sizeof...(Us) > 0) {
+            _tuple<Idx + 1, Ts...>::_assign(_tuple<Idx, U, Us...>::_get_tail(that));
+        }
+    }
 
     template <typename U, typename... Us, 
         typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us))>>
@@ -111,12 +155,25 @@ struct _tuple<Idx, T, Ts...>
 
 template <typename... Ts>
 struct tuple : public _tuple<0, Ts...> {
+    template <typename... Us>
+    static constexpr bool _disambiguating_constraint() noexcept {
+        if constexpr (sizeof...(Us) == 1) {
+            // 说明 tuple<Ts...> 把 tuple<tuple<Us...>> 放进啦
+            // tuple<int> 却 tuple<tuple<int&>>
+            using fk_tp = typename internal::get_type<Us...>::type;
+            return !std::is_same_v<tuple, std::remove_cvref_t<fk_tp>>;
+        } else {
+            return true;
+        }
+    }
+
     constexpr tuple()
         : _tuple<0, Ts...>()
     {}
 
     template <typename... Us, 
         typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us)
+            && _disambiguating_constraint<Us...>()
             && std::conjunction_v<std::is_convertible<Us, Ts>...>)>> // 允许隐式转换, 方可使用
     constexpr tuple(Us&&... ts)
         : _tuple<0, Ts...>(std::forward<Us>(ts)...)
@@ -125,20 +182,14 @@ struct tuple : public _tuple<0, Ts...> {
     // 为了满足类型转换(可强转) int -> std::size_t
     template <typename... Us, 
         typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us)
-        && !std::is_same_v<tuple<Ts...>, tuple<Us...>>)>> // 如果完全相等, 请走默认生成的构造!
-    constexpr tuple(tuple<Us...>& t)
-        : _tuple<0, Ts...>(t)
-    {}
-
-    template <typename... Us, 
-        typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us)
             && !std::is_same_v<tuple<Ts...>, tuple<Us...>>)>>
     constexpr tuple(const tuple<Us...>& t)
         : _tuple<0, Ts...>(t)
     {}
 
     template <typename... Us, 
-        typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us))>>
+        typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us)
+            && !std::is_same_v<tuple<Ts...>, tuple<Us...>>)>>
     constexpr tuple(tuple<Us...>&& t)
         : _tuple<0, Ts...>(std::move(t))
     {}
@@ -149,14 +200,17 @@ struct tuple : public _tuple<0, Ts...> {
     constexpr tuple& operator=(const tuple&) = delete; // 禁止拷贝复制
     constexpr tuple& operator=(tuple&&) = default;
 
-    // template <typename... Us, typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us))>>
-    // constexpr tuple& operator=(const tuple<Us...>& that) noexcept {
-    //     this->template _assign<Us...>(that);
-    //     return *this;
-    // }
+    template <typename... Us, 
+        typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us) 
+            && !std::is_same_v<tuple<Ts...>, tuple<Us...>>)>>
+    constexpr tuple& operator=(const tuple<Us...>& that) noexcept {
+        this->template _assign<Us...>(that);
+        return *this;
+    }
 
     template <typename... Us, 
-        typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us))>>
+        typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us) 
+            && !std::is_same_v<tuple<Ts...>, tuple<Us...>>)>>
     constexpr tuple& operator=(tuple<Us...>&& that) noexcept {
         this->_assign(std::move(that));
         return *this;
@@ -252,7 +306,8 @@ constexpr tuple<Ts&...> tie(Ts&... ts) noexcept {
 // 因此, 可以整个构造函数模版, 让它分别推导
 template <typename T>
 struct Test {
-    template <typename U = T>
+    template <typename U = T, 
+        typename = std::enable_if_t<std::conjunction_v<std::is_convertible<U, T>>>>
     constexpr Test(U&& _t)
         : t(std::forward<U>(_t)) // 这里 forward 用 U 以保持值类别
     {}
@@ -262,6 +317,12 @@ struct Test {
         t = that.t;
         return *this;
     }
+
+    constexpr Test(const Test&) = default;
+    constexpr Test(Test&&) = default;
+
+    constexpr Test& operator=(const Test&) = default;
+    constexpr Test& operator=(Test&&) = default;
 
     T t;
 };
@@ -276,6 +337,10 @@ int main() {
         int a = 1;
         Test<int&> t1 (a);
         Test<int> t2 (1);
+        t1 = t2;
+    } {
+        Test<int> t1(1);
+        Test<int> t2(2);
         t1 = t2;
     }
 
@@ -297,15 +362,25 @@ int main() {
         int a = 123;
         tuple<int> t1{int{}};
         tuple<int> t2{3};
-        tuple<int> t3{a};
-        tuple<int> t4(t3);
+        {
+            _tuple<0, int&> t3{a};
+            _tuple<0, int> t4(_tuple<0, int>{t3});
+        }
+        tuple<int&> t3{a};
+        tuple<int> t4{t3};
         t1 = std::move(t2);
 
+        HX::print::println("std::conjunction_v<std::is_convertible<Us, Ts>...> ", 
+            std::conjunction_v<std::is_convertible<int, int&>>);
+        HX::print::println("std::conjunction_v<std::is_convertible<Us, Ts>...> ", 
+            std::conjunction_v<std::is_convertible<tuple<int>, tuple<int&>>>);
+        HX::print::println("std::conjunction_v<std::is_convertible<Us, Ts>...> ", 
+            std::conjunction_v<std::is_convertible<std::tuple<int>, std::tuple<int&>>>);
         // 拷贝复制 = 拷贝构造 + 移动复制
         // 为什么不行?!
         // t2 = t3;
 
-        (void)t4;
+        // (void)t4;
     }
     return 0;
 }
