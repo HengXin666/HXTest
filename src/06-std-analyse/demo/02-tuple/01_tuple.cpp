@@ -53,6 +53,15 @@ struct _tuple_head_base {
     constexpr _tuple_head_base(const _tuple_head_base&) = default;
     constexpr _tuple_head_base(_tuple_head_base&&) = default;
 
+#ifdef DELETE_COPY_ASSIGNMENT_FUNCTION_TO_OPTIMIZE
+    constexpr _tuple_head_base& operator=(const _tuple_head_base&) = delete;
+#endif
+#ifndef DELETE_COPY_ASSIGNMENT_FUNCTION_TO_OPTIMIZE
+    constexpr _tuple_head_base& operator=(const _tuple_head_base&) = default;
+#endif
+
+    constexpr _tuple_head_base& operator=(_tuple_head_base&&) = default;
+
     template <typename U>
     constexpr _tuple_head_base(U&& t) noexcept
         : _head(std::forward<U>(t))
@@ -219,17 +228,16 @@ struct tuple : public _tuple<0, Ts...> {
     constexpr tuple(tuple&&) = default;
 
 #ifdef DELETE_COPY_ASSIGNMENT_FUNCTION_TO_OPTIMIZE
-    constexpr tuple& operator=(const tuple&) = delete; // 禁止拷贝复制
+    constexpr tuple& operator=(const tuple&) = delete; // 禁止拷贝赋值
 #endif
 #ifndef DELETE_COPY_ASSIGNMENT_FUNCTION_TO_OPTIMIZE
-    constexpr tuple& operator=(const tuple&) = default; // 禁止拷贝复制
+    constexpr tuple& operator=(const tuple&) = default; // 拷贝赋值
 #endif
     constexpr tuple& operator=(tuple&&) = default;
 
 #ifndef DELETE_COPY_ASSIGNMENT_FUNCTION_TO_OPTIMIZE
     template <typename... Us, 
-        typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us) 
-            && !std::is_same_v<tuple<Ts...>, tuple<Us...>>)>>
+        typename = std::enable_if_t<sizeof...(Ts) == sizeof...(Us)>>
     constexpr tuple& operator=(const tuple<Us...>& that) noexcept {
         this->template _assign<Us...>(that);
         return *this;
@@ -471,13 +479,12 @@ int main() {
             // std::tuple<int&> t4{t3};
         }
 
-#ifdef DELETE_COPY_ASSIGNMENT_FUNCTION_TO_OPTIMIZE 
         t1 = std::move(t2);
         t2 = tuple<int>{t1};
-#endif
+
 #ifndef DELETE_COPY_ASSIGNMENT_FUNCTION_TO_OPTIMIZE 
         t1 = t2;
-        t2 = t1;
+        t2 = {t1};
 #endif
 
         {
