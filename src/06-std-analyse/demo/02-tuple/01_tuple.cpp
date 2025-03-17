@@ -15,39 +15,6 @@ struct get_type {
     using type = T;
 };
 
-// 判断某个类型是否为 _tuple 实例
-template <typename T>
-struct is_tuple 
-    : std::false_type 
-{};
-
-template <size_t Idx, typename T, typename... Ts>
-struct is_tuple<_tuple<Idx, T, Ts...>> 
-    : std::true_type 
-{};
-
-template <typename T>
-constexpr bool is_tuple_v = is_tuple<std::remove_cvref_t<T>>::value;
-
-// 判断 _tuple 的头元素是否也是 _tuple
-template <typename T>
-struct is_nested_tuple 
-    : std::false_type 
-{};
-
-template <size_t Idx, typename U, typename... Us>
-struct is_nested_tuple<_tuple<Idx, U, Us...>> 
-    : is_tuple<std::remove_cvref_t<U>> 
-{};
-
-template <typename T>
-constexpr bool is_nested_tuple_v = is_nested_tuple<std::remove_cvref_t<T>>::value;
-
-template <typename... Ts>
-struct ts_to_tuple_wrap {
-    using type = _tuple<0, Ts...>;
-};
-
 } // namespace internal
 
 #define __merge__(x, y) x##y
@@ -57,17 +24,10 @@ struct ts_to_tuple_wrap {
     HX::print::println(#__VA_ARGS__, " -> ", __merge_tow_args__(if_, __LINE__))
 
 int __test_is_tuple__ = [] {
+    return 0;
+
     test_bool_to_void(std::is_same_v<std::tuple<int>, std::tuple<int&>>);
     test_bool_to_void(std::is_same_v<_tuple<0, int>, _tuple<0, _tuple<0, int>>>);
-
-    test_bool_to_void(internal::is_tuple_v<_tuple<0, int>>);
-    test_bool_to_void(internal::is_tuple_v<_tuple<0, _tuple<0, int&>>>);
-    test_bool_to_void(internal::is_tuple_v<int>);
-
-    test_bool_to_void(internal::is_nested_tuple_v<int>);
-    test_bool_to_void(internal::is_nested_tuple_v<_tuple<0, int>>);
-    test_bool_to_void(internal::is_nested_tuple_v<_tuple<0, _tuple<0, int&>>>);
-    test_bool_to_void(internal::is_nested_tuple_v<_tuple<0, int, _tuple<0, int&>>>);
     
     std::tuple<std::tuple<int>> std_tt{{0}};
     auto std_tt_v = std::tuple<std::tuple<int>>{std_tt};
@@ -97,12 +57,6 @@ struct _tuple_head_base {
     constexpr _tuple_head_base(U&& t) noexcept
         : _head(std::forward<U>(t))
     {}
-
-    // template <typename U = T>
-    // constexpr T& operator=(const _tuple_head_base<Idx, U>& that) noexcept {
-    //     t = that.t;
-    //     return *this;
-    // }
 
     static constexpr const T& _get_head(const _tuple_head_base& t) noexcept {
         return t._head;
@@ -204,18 +158,6 @@ struct _tuple<Idx, T, Ts...>
 
 template <typename... Ts>
 struct tuple : public _tuple<0, Ts...> {
-    // template <typename... Us>
-    // static constexpr bool _disambiguating_constraint() noexcept {
-    //     if constexpr (sizeof...(Us) == 1) {
-    //         // 说明 tuple<Ts...> 把 tuple<tuple<Us...>> 放进啦
-    //         // tuple<int> 却 tuple<tuple<int&>>
-    //         using fk_tp = typename internal::get_type<Us...>::type;
-    //         return !std::is_same_v<tuple, std::remove_cvref_t<fk_tp>>;
-    //     } else {
-    //         return true;
-    //     }
-    // }
-
     using _base = _tuple<0, Ts...>;
 
     template <typename... Us>
@@ -223,7 +165,10 @@ struct tuple : public _tuple<0, Ts...> {
         if constexpr (sizeof...(Ts) != sizeof...(Us)) {
             return false;
         } else {
-            return std::conjunction_v<std::is_convertible<Ts, Us>...>;
+            // 注意区分: is_constructible 与 is_convertible
+            // 1) is_constructible<T, U> 是否能用 U 类型的对象显式地构造 T, 即 T t = T(u); 是否有效
+            // 2) is_convertible<T, U>  是否可以将 U 隐式转换为 T, 即 T t = u; 是否有效
+            return std::conjunction_v<std::is_constructible<Ts, Us>...>;
         }
     }
 
@@ -251,7 +196,7 @@ struct tuple : public _tuple<0, Ts...> {
     template <typename... Us, 
         typename = std::enable_if_t<(
             _constructible<Us...>()
-            && _disambiguating_constraint<Us...>()
+            // && _disambiguating_constraint<Us...>() // 好像不起作用... (略显多余)
         )>>
     constexpr tuple(Us&&... ts)
         : _base(std::forward<Us>(ts)...)
@@ -259,13 +204,13 @@ struct tuple : public _tuple<0, Ts...> {
 
     // 为了满足类型转换(可强转) int -> std::size_t
     template <typename... Us, 
-        typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us))>>
+        typename = std::enable_if_t<_constructible<Us...>()>>
     constexpr tuple(const tuple<Us...>& t)
         : _base(static_cast<const _tuple<0, Us...>&>(t)) // 此处需要转换类型为基类
     {}                                                   // 否则模版不匹配, 就会匹配到 Us&& 上
 
     template <typename... Us, 
-        typename = std::enable_if_t<(sizeof...(Ts) == sizeof...(Us))>>
+        typename = std::enable_if_t<_constructible<Us...>()>>
     constexpr tuple(tuple<Us...>&& t)
         : _base(std::move(static_cast<_tuple<0, Us...>&&>(t)))
     {}
@@ -466,16 +411,14 @@ int __test__ = []() {{
     return 0;
 } ();
 
-int __test_tuple__ = [] {
-    test_bool_to_void(std::is_same_v<tuple<int>, tuple<tuple<int>>>);
-    test_bool_to_void(std::is_same_v<tuple<int>, int>);
-
-    test_bool_to_void(!(internal::is_tuple_v<internal::get_type<tuple<int>>::type> 
-        && !internal::is_nested_tuple_v<internal::get_type<tuple<int>>::type>));
-    return 0;
-} ();
-
 int main() {
+    // 特别注意
+    test_bool_to_void(tuple<int&>::_constructible<int>()); // false
+                                                           // int& 不能从int构造 (因为int&是左值, int是右值)
+
+    test_bool_to_void(tuple<int>::_constructible<int&>()); // true
+                                                           // int 可以从int&构造 (复制值)
+
     tuple<int, double, tuple<std::string, int>> t{
         1, 
         3.14,
@@ -512,29 +455,42 @@ int main() {
         int a = 123;
         tuple<int> t1{int{}};
         tuple<int> t2{3};
-        tuple<int&> t3{a};
-        tuple<int> t4{t3};
+        {
+            tuple<int&> t3{a};
+            tuple<int> t4{t3};
+        } {
+            tuple<int> t3{a};
+            // tuple<int&> t4{t3};
+        }
+
+        {
+            std::tuple<int&> t3{a}; 
+            std::tuple<int> t4{t3}; 
+        } {
+            std::tuple<int> t3{a}; 
+            // std::tuple<int&> t4{t3};
+        }
 
 #ifdef DELETE_COPY_ASSIGNMENT_FUNCTION_TO_OPTIMIZE 
         t1 = std::move(t2);
-        t1 = std::move(t2);
-        t3 = tuple<int>{t1};
+        t2 = tuple<int>{t1};
 #endif
 #ifndef DELETE_COPY_ASSIGNMENT_FUNCTION_TO_OPTIMIZE 
         t1 = t2;
-        t1 = t3;
-        t3 = t1;
+        t2 = t1;
 #endif
 
-        if constexpr (false) {
+        {
+#if 0
             HX::print::println("std::conjunction_v<std::is_convertible<int, int&>> ", 
                 std::conjunction_v<std::is_convertible<int, int&>>);
             HX::print::println("std::conjunction_v<std::is_convertible<tuple<int>, tuple<int&>>> ", 
                 std::conjunction_v<std::is_convertible<tuple<int>, tuple<int&>>>);
             HX::print::println("std::conjunction_v<std::is_convertible<std::tuple<int>, std::tuple<int&>>> ", 
                 std::conjunction_v<std::is_convertible<std::tuple<int>, std::tuple<int&>>>);
+#endif
         }
-        (void)t4;
+        // (void)t4;
     }
 
     // 嵌套tuple测试
@@ -546,15 +502,15 @@ int main() {
         HX::print::println("<0, 0>: ", get<0>(get<0>(tt_2)));
     }
 
-#if 0 // 如果类型不匹配, 会报错没有这个构造函数, 而不是没有在内部赋值时候报错 (也就是被匹配上了)
     {
+#if 0 // 如果类型不匹配, 会报错没有这个构造函数, 而不是没有在内部赋值时候报错 (也就是被匹配上了)
         auto t = std::tuple<int>{1};
         std::tuple<std::tuple<int>> tt{std::move(t)};
         auto tt_2 = std::tuple<std::tuple<int, int>>{tt};
 
         HX::print::println("<0, 0>: ", get<0>(get<0>(tt_2)));
         HX::print::println("<0, 1>: ", get<1>(get<0>(tt_2)));
-    }
 #endif
+    }
     return 0;
 }
