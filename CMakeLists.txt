@@ -42,9 +42,6 @@ message(STATUS "Binary dir is ${PROJECT_BINARY_DIR}")
 message(STATUS "Source dir is ${PROJECT_SOURCE_DIR}")
 message(STATUS "ROOT_PATH dir is ${ROOT_PATH}")
 
-# 设置编译出来的可执行程序的名称
-set(appName HXTest)
-
 include_directories(include)
 
 if(CMAKE_PROJECT_NAME STREQUAL "HXTest")

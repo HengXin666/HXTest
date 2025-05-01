@@ -46,3 +46,10 @@ if(BUILD_06_STD_ANALYSE)
     add_subdirectory(src/06-std-analyse)
     message("=-=-=-=-=-=-= Build 06-std-analyse =-=-=-=-=-=-=")
 endif()
+
+option(BUILD_07_QT "Build 07-QT" ON)
+
+if(BUILD_07_QT)
+    add_subdirectory(src/07-qt)
+    message("=-=-=-=-=-=-= Build 07-QT =-=-=-=-=-=-=")
+endif()
