@@ -35,19 +35,15 @@
 #include <HXSTL/utils/NumericBaseConverter.hpp>
 
 // 屏蔽未使用函数、变量和参数的警告
-#if defined(_MSC_VER) // MSVC
+#if defined(_MSC_VER)
     #pragma warning(push)
-    #pragma warning(disable: 4505) // C4505: 未使用的局部函数
-    #pragma warning(push)
-    #pragma warning(disable: 4101) // C4101: 未使用的局部变量
-    #pragma warning(push)
-    #pragma warning(disable: 4456) // C4456: 声明隐藏了一个局部变量
-#elif defined(__GNUC__) || defined(__clang__) // GCC 和 Clang
+    #pragma warning(disable: 4505) // 未使用的静态函数
+    #pragma warning(disable: 4101) // 未使用的局部变量
+    #pragma warning(disable: 4100) // 未使用的参数
+#elif defined(__GNUC__) || defined(__clang__)
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wunused-function"
-    #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wunused-variable"
-    #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 
@@ -665,13 +661,9 @@ inline void toString(T&& t, Stream& s) {
 }}} // namespace HX::STL::utils
 
 // 恢复删除的警告
-#if defined(_MSC_VER) // MSVC
+#if defined(_MSC_VER)
     #pragma warning(pop)
-    #pragma warning(pop)
-    #pragma warning(pop)
-#elif defined(__GNUC__) || defined(__clang__) // GCC 和 Clang
-    #pragma GCC diagnostic pop
-    #pragma GCC diagnostic pop
+#elif defined(__GNUC__) || defined(__clang__)
     #pragma GCC diagnostic pop
 #endif
 

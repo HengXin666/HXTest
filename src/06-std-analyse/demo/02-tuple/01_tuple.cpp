@@ -64,7 +64,7 @@ struct _tuple_head_base {
 
     template <typename U>
     constexpr _tuple_head_base(U&& t) noexcept
-        : _head(std::forward<U>(t))
+        : _head(static_cast<T>(std::forward<U>(t)))
     {}
 
     static constexpr const T& _get_head(const _tuple_head_base& t) noexcept {
@@ -186,8 +186,9 @@ struct tuple : public _tuple<0, Ts...> {
         if constexpr (sizeof...(Ts) != sizeof...(Us)) {
             return false;
         } else if constexpr (sizeof...(Us) == 1) {
-            using _U0 = typename std::_Nth_type<0, Us...>::type;
-	        return !std::is_same_v<std::remove_cvref_t<_U0>, tuple>;
+            // 用不上, 忘记删除了
+            // using _U0 = typename std::_Nth_type<0, Us...>::type;
+	        // return !std::is_same_v<std::remove_cvref_t<_U0>, tuple>;
         }
         return true;
     }

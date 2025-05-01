@@ -2,19 +2,21 @@ cmake_minimum_required(VERSION 3.20.0)
 # 定义工程名称, 并指定语言为C++
 project(HXTest LANGUAGES CXX)
 
-# 是否启用 Address Sanitizer
-set(HX_DEBUG_BY_ADDRESS_SANITIZER ON)
+if(NOT WIN32)
+    # 是否启用 Address Sanitizer
+    set(HX_DEBUG_BY_ADDRESS_SANITIZER ON)
 
-# 使用 Address Sanitizer
-if(HX_DEBUG_BY_ADDRESS_SANITIZER AND CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address")
-    message("=-=-=-=-=-=-= 启用 Address Sanitizer [-fsanitize=address] =-=-=-=-=-=-=")
+    # 使用 Address Sanitizer
+    if(HX_DEBUG_BY_ADDRESS_SANITIZER AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address")
+        message("=-=-=-=-=-=-= 启用 Address Sanitizer [-fsanitize=address] =-=-=-=-=-=-=")
+    endif()
+
+    # 改用 clang 编译器
+    set(CMAKE_C_COMPILER clang)
+    set(CMAKE_CXX_COMPILER clang++)
 endif()
-
-# 改用 clang 编译器
-# set(CMAKE_C_COMPILER clang)
-# set(CMAKE_CXX_COMPILER clang++)
 
 # 如果没有定义CMAKE_BUILD_TYPE，则设置为Release
 # 可以使用 cmake -DCMAKE_BUILD_TYPE=Debug .. 来指定
@@ -27,22 +29,8 @@ else()
     message("已添加宏: _HX_DEBUG_")
 endif()
 
-set(CMAKE_CXX_STANDARD 20) # 设置C++标准为C++20
-set(CMAKE_C_STANDARD 11)   # 设置C语言标准为C11
-set(CMAKE_CXX_STANDARD_REQUIRED ON) # 指定C++标准是必需的
-set(CMAKE_CXX_EXTENSIONS OFF) # 禁用编译器的扩展
-# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fcoroutines") # 显式启动C++协程
-
 # 设置CMake模块路径, 包含当前目录下的cmake文件夹以及之前的路径
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake;${CMAKE_MODULE_PATH}")
-
-add_compile_options(
-    -Wall                     # 启用所有警告
-    -Wextra                   # 启用额外的警告
-    -Werror=return-type       # 将函数返回类型的警告视为错误, 确保所有函数都有返回值
-    -Wnon-virtual-dtor        # 当类有虚函数但没有虚析构函数时发出警告
-    -Wdelete-non-virtual-dtor # 当试图删除有虚函数但没有虚析构函数的对象时发出警告
-)
 
 # 定义生成的库的存放目录
 set(LIB_PATH ${PROJECT_SOURCE_DIR}/lib)
@@ -59,7 +47,10 @@ set(appName HXTest)
 
 include_directories(include)
 
-include(cmake/subDir.cmake)
+if(CMAKE_PROJECT_NAME STREQUAL "HXTest")
+    include(cmake/develop.cmake)
+    include(cmake/subDir.cmake)
+endif()
 
 # 将include目录添加到HXTest库的公共包含目录中
 # target_include_directories(HXTest PUBLIC include)

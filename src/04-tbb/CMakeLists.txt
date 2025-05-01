@@ -1,5 +1,14 @@
 project(04-tbb LANGUAGES CXX)
 
+# 查找依赖, 如果找不到就跳过当前项目
+find_package(Threads QUIET)
+find_package(TBB QUIET)
+
+if(NOT Threads_FOUND OR NOT TBB_FOUND)
+    message(WARNING "[04-tbb] Skip building because required dependencies are missing (Threads or TBB).")
+    return()
+endif()
+
 file(GLOB_RECURSE TEST_FILES CONFIGURE_DEPENDS 
     ./demo/*.cpp
 )
