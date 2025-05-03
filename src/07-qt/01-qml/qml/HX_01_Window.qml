@@ -5,7 +5,7 @@ Window { // root 控件, 父窗口是主界面
     width: 640
     height: 480
     visible: true
-    title: qsTr("Hello World")
+    title: qsTr("01: Hello World")
     property int hxVal: 0
 
     onHxValChanged: {

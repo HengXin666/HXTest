@@ -12,7 +12,8 @@ int main(int argc, char *argv[]) {
         []() { QCoreApplication::exit(-1); },
         Qt::QueuedConnection
     );
-    engine.loadFromModule("HX-01-QML", "Main");
+    // 应该使用 _ 和 [0-9a-Z], 不能使用`-`
+    engine.loadFromModule("HX_01_QML", "HX_02_ItemAndRectangle");
 
     return app.exec();
 }

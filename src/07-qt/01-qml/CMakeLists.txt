@@ -1,4 +1,4 @@
-set(projectName "HX-01-QML")
+set(projectName "HX_01_QML")
 
 project(${projectName}
     VERSION 0.0.1
@@ -34,12 +34,14 @@ target_link_libraries(${projectName}
     PRIVATE Qt::Quick
 )
 
-# 添加 QML 文件所在目录作为资源路径（推荐方式）
+# 添加 QML 文件所在目录作为资源路径
 qt_add_qml_module(${projectName}
     URI ${projectName}  # QML 中 import 的名字
     VERSION 1.0
     QML_FILES
-        qml/Main.qml
+        qml/HX_01_Window.qml
+        qml/HX_02_ItemAndRectangle.qml
+        qml/ui/MyRectangle.qml
 )
 
 # Qt拓展 (PDF操作 与 渲染)
@@ -106,3 +108,5 @@ install(TARGETS ${projectName}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+
+set_target_properties(${projectName} PROPERTIES FOLDER 07-qt/${PARENT_DIR})
