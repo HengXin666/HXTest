@@ -1,0 +1,7 @@
+<RCC>
+    <qresource prefix="/" />
+    <qresource prefix="/img">
+        <file alias="misaka.png">img/misaka.png</file>
+        <file alias="maye.gif">img/maye.gif</file>
+    </qresource>
+</RCC>

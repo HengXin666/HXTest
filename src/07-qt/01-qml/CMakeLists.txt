@@ -41,8 +41,9 @@ qt_add_qml_module(${projectName}
     QML_FILES
         qml/HX_01_Window.qml
         qml/HX_02_ItemAndRectangle.qml
-        qml/ui/MyRectangle.qml
         qml/HX_03_StatesAndTransitions.qml
+        qml/HX_04_ComponentAndLoader.qml
+        qml/ui/MyRectangle.qml
 )
 
 # Qt拓展 (PDF操作 与 渲染)
