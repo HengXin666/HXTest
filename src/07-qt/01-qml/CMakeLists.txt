@@ -46,6 +46,7 @@ qt_add_qml_module(${projectName}
         qml/HX_05_MouseArea.qml
         qml/HX_06_Button.qml
         qml/HX_07_Property.qml
+        qml/HX_08_AllButton.qml
         qml/ui/MyRectangle.qml
 )
 
