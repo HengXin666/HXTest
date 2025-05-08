@@ -10,6 +10,7 @@ Window {
     Repeater {
         model: 3
         delegate: Button {
+            required property int index
             width: 50; height: 50;
             y: index * 60
         }
@@ -18,6 +19,8 @@ Window {
     Repeater {
         model: ["文本1", "文本2", "我是文本三"]
         delegate: Button {
+            required property int index
+            required property string modelData
             width: 50; height: 50;
             x: 100
             y: index * 60
