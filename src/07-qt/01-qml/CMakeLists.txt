@@ -49,6 +49,7 @@ qt_add_qml_module(${projectName}
         qml/HX_08_AllButton.qml
         qml/HX_09_Text.qml
         qml/HX_10_Popup.qml
+        qml/HX_11_Repeater.qml
         qml/ui/MyRectangle.qml
 )
 

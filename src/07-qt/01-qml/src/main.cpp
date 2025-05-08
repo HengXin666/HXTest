@@ -13,7 +13,7 @@ int main(int argc, char *argv[]) {
         Qt::QueuedConnection
     );
     // 应该使用 _ 和 [0-9a-Z], 不能使用`-`
-    engine.loadFromModule("HX_01_QML", "HX_10_Popup");
+    engine.loadFromModule("HX_01_QML", "HX_11_Repeater");
 
     return app.exec();
 }
