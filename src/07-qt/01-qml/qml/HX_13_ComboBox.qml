@@ -1,5 +1,8 @@
 import QtQuick
+import Qt5Compat.GraphicalEffects
 import QtQuick.Controls
+
+pragma ComponentBehavior: Bound
 
 Window {
     width: 640
@@ -88,22 +91,87 @@ Window {
             elide: Text.ElideRight
         }
 
+        // 自定义下拉箭头指示器 (你也可以放图片)
+        // indicator: Canvas {
+        //     id: arrow
+        //     width: 20
+        //     height: 20
+        //     contextType: "2d"
+        //     onPaint: {
+        //         var ctx = getContext("2d")
+        //         ctx.clearRect(0, 0, width, height)
+        //         ctx.fillStyle = "black"
+        //         ctx.beginPath()
+        //         ctx.moveTo(5, 7)
+        //         ctx.lineTo(15, 7)
+        //         ctx.lineTo(10, 13)
+        //         ctx.closePath()
+        //         ctx.fill()
+        //     }
+        // }
+
         // 自定义每一项是如何绘制的
         delegate: ItemDelegate {
             id: itDg
-            property int index;
-            property string modelData;
-            property ComboBox control;
+            required property int index;
+            required property string modelData;
 
             width: control.width
             contentItem: Text {
-                text: itDg.modelData
-                color: "#990099"
-                font: itDg.control.font
+                text: `${itDg.index} - ${itDg.modelData}`
+                color: itDg.index % 2 ? "#990099" : "#f49ff4"
+                font: control.font
                 elide: Text.ElideRight
                 verticalAlignment: Text.AlignVCenter
             }
             highlighted: control.highlightedIndex === index
+        }
+
+        // 自定义下拉菜单框
+        popup: Popup {
+            y: control.height - 1 // 距离 `contentItem` 的距离 (可以调整, 使其在上面)
+            width: control.width
+            implicitHeight: contentItem.implicitHeight
+            contentItem: ListView {
+                clip: true                                                  // 超出子项, 会被裁剪
+                implicitHeight: contentHeight                               // 默认高度为其内容的总高度
+                model: control.popup.visible ? control.delegateModel : null // 节约性能吧, 关闭后释放内容资源
+                currentIndex: control.highlightedIndex
+                highlight: Rectangle {
+                    color: "#aaddff"
+                    radius: 4
+                }
+                boundsBehavior: Flickable.StopAtBounds  // 可以拖动, 但没有边界回弹
+                interactive: false                      // 禁止鼠标拖动这种项
+
+                // 使用默认的拖动条
+                ScrollBar.vertical: ScrollBar {
+                    policy: ScrollBar.AlwaysOn
+                }
+            }
+
+            background: Rectangle {
+                color: "#ffffff"
+                border.width: 1
+                border.color: "red"
+                radius: 4
+                // 开启图层, 并添加阴影效果
+                layer.enabled: true
+                layer.effect: DropShadow {
+                    horizontalOffset: 3 // 横向偏移
+                    verticalOffset: 3   // 纵向偏移
+                    radius: 8.0         // 阴影模糊半径 (越大越柔和)
+                    samples: 17         // 采样点数量 (越高越平滑，但越耗性能)
+                    color: "#9e990099"  // 阴影颜色
+                }
+            }
+        }
+
+        // 自定义边框、背景 (项的)
+        background: Rectangle {
+            radius: 4
+            border.color: "#99cc99"
+            border.width: 1
         }
     }
 }
