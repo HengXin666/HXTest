@@ -51,8 +51,12 @@ qt_add_qml_module(${projectName}
         qml/HX_10_Popup.qml
         qml/HX_11_Repeater.qml
         qml/HX_12_ListView.qml
+        qml/HX_13_ComboBox.qml
         qml/ui/MyRectangle.qml
 )
+
+find_package(Qt6 REQUIRED COMPONENTS QuickControls2)
+target_link_libraries(${projectName} PRIVATE Qt6::QuickControls2)
 
 # Qt拓展 (PDF操作 与 渲染)
 # find_package(Qt6 REQUIRED COMPONENTS Pdf PdfWidgets)
