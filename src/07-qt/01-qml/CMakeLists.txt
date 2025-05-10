@@ -52,6 +52,7 @@ qt_add_qml_module(${projectName}
         qml/HX_11_Repeater.qml
         qml/HX_12_ListView.qml
         qml/HX_13_ComboBox.qml
+        qml/HX_14_FocusScope.qml
         qml/ui/MyRectangle.qml
 )
 
