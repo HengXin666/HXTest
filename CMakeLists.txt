@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20.0)
+cmake_minimum_required(VERSION 3.21.0)
 # 定义工程名称, 并指定语言为C++
 project(HXTest LANGUAGES CXX)
 

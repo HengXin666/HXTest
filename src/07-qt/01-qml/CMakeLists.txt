@@ -7,6 +7,8 @@ project(${projectName}
     LANGUAGES CXX
 )
 
+include_directories(include)
+
 file(GLOB_RECURSE src_files CONFIGURE_DEPENDS 
     src/*.cpp
     include/*.h
@@ -34,6 +36,8 @@ target_link_libraries(${projectName}
     PRIVATE Qt::Quick
 )
 
+set(QT_QML_GENERATE_QMLLS_INI ON)
+
 # 添加 QML 文件所在目录作为资源路径
 qt_add_qml_module(${projectName}
     URI ${projectName}  # QML 中 import 的名字
@@ -54,8 +58,11 @@ qt_add_qml_module(${projectName}
         qml/HX_13_ComboBox.qml
         qml/HX_14_FocusScope.qml
         qml/HX_15_Signal.qml
+        qml/HX_16_CppAndQml.qml
         qml/ui/MyRectangle.qml
         qml/ui/MySignalRect.qml
+
+        include/qml/HxData.h
 )
 
 find_package(Qt6 REQUIRED COMPONENTS QuickControls2)
