@@ -53,7 +53,9 @@ qt_add_qml_module(${projectName}
         qml/HX_12_ListView.qml
         qml/HX_13_ComboBox.qml
         qml/HX_14_FocusScope.qml
+        qml/HX_15_Signal.qml
         qml/ui/MyRectangle.qml
+        qml/ui/MySignalRect.qml
 )
 
 find_package(Qt6 REQUIRED COMPONENTS QuickControls2)
