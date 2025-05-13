@@ -1,6 +1,6 @@
 #include <HXprint/print.h>
 
-// #define __test_Forward_Declaration__
+#define __test_Forward_Declaration__
 
 /**
  * @brief 此处理论上不算循环依赖, 应该是逻辑错误!
@@ -15,13 +15,23 @@ struct B;
 
 template <typename T = void>
 struct A {
-    B<T> b;
+    explicit A(B<T>& b)
+        : _b(b)
+    {}
+
+    void fun() {
+        _b.todo(*this);
+    }
+
+    B<T>& _b;
 };
 
 template <typename T = void>
 struct B {
-    A<T> a; // 字段的类型 "A<void>" 不完整
-            // Field has incomplete type 'A<void>'
+    void todo(A<T>& a) {
+        static_cast<void>(a._b);
+        HX::print::println("todo: B");
+    }
 };
 
 #else
@@ -29,11 +39,21 @@ struct B {
 struct B;
 
 struct A {
-    B b; // Field has incomplete type 'B'
+    explicit A(B& b)
+        : _b(b)
+    {}
+
+    void func() {
+        _b.todo(); // Member access into incomplete type 'B'
+    }
+
+    B& _b;
 };
 
 struct B {
-    A a;
+    A& a;
+
+    void todo() {}
 };
 
 #endif // ! #if
@@ -41,8 +61,9 @@ struct B {
 
 int main() {
 #ifdef __test_Forward_Declaration__
-    A a{};
     B b{};
+    A a{b};
+    a.fun();
 #endif
     return 0;
 }
