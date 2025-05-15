@@ -23,6 +23,7 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
             - [玩具: 编译期求质数、质数筛(性能较差)](./src/06-std-analyse/demo/01-constexpr/04_primeNumber.cpp)
         - 02-tuple
             - [tuple](./src/06-std-analyse/demo/02-tuple/01_tuple.cpp) (包含`get(tuple)`、`tuple_size_v`、`make_tuple`、`tie`的实现, *~~引用多态真奇妙~~*)
+            - [trivially_copyable的tuple](./src/06-std-analyse/demo/02-tuple/02_tuple.cpp)
         
         - 03-memory
             - [unique_ptr](./src/06-std-analyse/demo/03-memory/01_UniquePtr.cpp)

@@ -15,6 +15,8 @@ struct B;
 
 template <typename T = void>
 struct A {
+    static_assert(std::is_same_v<T, void>, "error");
+
     explicit A(B<T>& b)
         : _b(b)
     {}
