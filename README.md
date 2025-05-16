@@ -30,6 +30,8 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
 
         - 坑:
             - std::is_convertible、 is_constructible 实现
-    - 实验
+    - 实验 & 学习
         - 01-使用模版名称二阶段查找, 规避循环依赖问题 (虽然没有任何实际用处)
             - [示例1](./ser/../src/06-std-analyse/test/01-tp-ForwardDeclaration/test_01.cpp)
+        - 02-CRTP
+            - [奇异递归模版 | 编译期多态](./src/06-std-analyse/test/02-crtp/01_crtp.cpp)
