@@ -136,7 +136,7 @@ struct ToString<T> {
     static std::string toString(T const& obj) {
         std::string res;
         constexpr std::size_t Cnt = HX::STL::reflection::membersCountVal<T>;
-        static_assert(Cnt > 0, "toString is not implemented for this type");
+        // static_assert(Cnt > 0, "toString is not implemented for this type");
         res.push_back('{');
         if constexpr (Cnt > 0) {
             HX::STL::reflection::forEach(const_cast<T&>(obj), [&](auto index, auto name, auto& val) {
