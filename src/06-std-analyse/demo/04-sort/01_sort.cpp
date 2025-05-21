@@ -1,5 +1,4 @@
 #include <HXprint/print.h>
-#include <type_traits>
 #include <vector>
 #include <deque>
 #include <list>
@@ -109,9 +108,6 @@ struct Sorter {
     T& arr;
 };
 #elif SORT_V == 0x05
-template <typename T, typename Func>
-struct Sorter;
-
 template <typename T, typename Func>
 struct Sorter {
     // 支持谓词 和 甚至 std::forward_list 的 仅前向自增迭代器

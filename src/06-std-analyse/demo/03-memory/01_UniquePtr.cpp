@@ -56,10 +56,13 @@ struct RaiiPrint {
     ~RaiiPrint() {
         HX::print::println("} // 析构");
     }
+
+    int x;
 };
 
 int main() {
     auto ptr = HX::makeUniquePtr<RaiiPrint>(1, 2, 3, HX::makeUniquePtr<RaiiPrint>(1, 2, 3));
     ptr->show();
+    (void)ptr->x;
     return 0;
 }
