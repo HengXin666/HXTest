@@ -59,6 +59,8 @@ struct SharedPtr {
     }
 
     SharedPtr& operator=(SharedPtr const& that) noexcept {
+        if (this == &that)
+            return *this;
         doReset();
         _cnt = that._cnt;
         _ptr = that._ptr;
@@ -67,6 +69,8 @@ struct SharedPtr {
     }
 
     SharedPtr& operator=(SharedPtr&& that) noexcept {
+        if (this == &that)
+            return *this;
         doReset();
         _cnt = that._cnt;
         _ptr = that._ptr;
