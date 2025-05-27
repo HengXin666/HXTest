@@ -43,3 +43,5 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
             - 暂时不提供示例(因为太乱了), 请见我的笔记: [协程速记](https://hengxin666.github.io/HXLoLi/docs/%E7%A8%8B%E5%BA%8F%E8%AF%AD%E8%A8%80/C++/%E7%8E%B0%E4%BB%A3C++/%E7%8E%B0%E4%BB%A3C++%E5%8D%8F%E7%A8%8B/%E5%8D%8F%E7%A8%8B%E9%80%9F%E8%AE%B0)
         - 04-使用`constexpr`检测UB
             - [`constexpr`检测UB | 常见UB大全](src/06-std-analyse/test/04-select-ub/01_ub_look.cpp)
+        - 05-深入学习虚析构的各种情况, 并且简单实现了shared_ptr智能指针的类型擦除
+            - [实验代码](src/06-std-analyse/test/05-vBaseClass/01-v_base_class.cpp)
