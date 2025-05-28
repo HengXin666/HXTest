@@ -45,3 +45,5 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
             - [`constexpr`检测UB | 常见UB大全](src/06-std-analyse/test/04-select-ub/01_ub_look.cpp)
         - 05-深入学习虚析构的各种情况, 并且简单实现了shared_ptr智能指针的类型擦除
             - [实验代码](src/06-std-analyse/test/05-vBaseClass/01-v_base_class.cpp)
+        - 06-学习全局运算符重载和自定义字面量
+            - [实验代码](src/06-std-analyse/test/06-my-op/01_my_op.cpp)

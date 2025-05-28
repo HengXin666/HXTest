@@ -162,6 +162,8 @@ private:
  * @brief 测试自己实现的伪智能指针 (U / S) 系列对于析构的掌握
  */
 auto __init__ = []{
+    if constexpr (false)
+        return 0;
     HX::print::println("U Ptr {");
     {
         UPtr<Base> p{new Boy};
