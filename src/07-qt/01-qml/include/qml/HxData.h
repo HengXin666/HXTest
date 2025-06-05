@@ -73,13 +73,13 @@ private:
         READ getVal 
         WRITE setVal 
         NOTIFY valChanged
-    );
+    )
     Q_PROPERTY(
         QString _str 
         READ getStr 
         WRITE setStr 
         NOTIFY strChanged
-    );
+    )
 };
 
 #endif // !_HX_HX_DATA_H_

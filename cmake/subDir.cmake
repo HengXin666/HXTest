@@ -53,3 +53,10 @@ if(BUILD_07_QT)
     add_subdirectory(src/07-qt)
     message("=-=-=-=-=-=-= Build 07-QT =-=-=-=-=-=-=")
 endif()
+
+option(BUILD_08_OPENGL "Build 08-OpenGL" ON)
+
+if(BUILD_08_OPENGL)
+    add_subdirectory(src/08-OpenGL)
+    message("=-=-=-=-=-=-= Build 08-OpenGL =-=-=-=-=-=-=")
+endif()

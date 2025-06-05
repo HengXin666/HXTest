@@ -4,18 +4,18 @@ project(HXTest LANGUAGES CXX)
 
 if(NOT WIN32)
     # 是否启用 Address Sanitizer
-    set(HX_DEBUG_BY_ADDRESS_SANITIZER ON)
+    # set(HX_DEBUG_BY_ADDRESS_SANITIZER ON)
 
     # 使用 Address Sanitizer
-    if(HX_DEBUG_BY_ADDRESS_SANITIZER AND CMAKE_BUILD_TYPE STREQUAL "Debug")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address")
-        message("=-=-=-=-=-=-= 启用 Address Sanitizer [-fsanitize=address] =-=-=-=-=-=-=")
-    endif()
+    # if(HX_DEBUG_BY_ADDRESS_SANITIZER AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+    #     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
+    #     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address")
+    #     message("=-=-=-=-=-=-= 启用 Address Sanitizer [-fsanitize=address] =-=-=-=-=-=-=")
+    # endif()
 
     # 改用 clang 编译器
-    set(CMAKE_C_COMPILER clang)
-    set(CMAKE_CXX_COMPILER clang++)
+    # set(CMAKE_C_COMPILER clang)
+    # set(CMAKE_CXX_COMPILER clang++)
 endif()
 
 # 如果没有定义CMAKE_BUILD_TYPE，则设置为Release
@@ -30,10 +30,10 @@ else()
 endif()
 
 # 设置CMake模块路径, 包含当前目录下的cmake文件夹以及之前的路径
-set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake;${CMAKE_MODULE_PATH}")
+# set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake;${CMAKE_MODULE_PATH}")
 
 # 定义生成的库的存放目录
-set(LIB_PATH ${PROJECT_SOURCE_DIR}/lib)
+# set(LIB_PATH ${PROJECT_SOURCE_DIR}/lib)
 
 set(ROOT_PATH "${PROJECT_SOURCE_DIR}") # 设置根项目的根目录
 # 在camke .. 的时候会输出提示目录路径 (可选)

@@ -115,7 +115,7 @@ int main() {
             if (it == pArrScanned.end()) [[unlikely]] {
                 return "";
             }
-            return res[it - pArrScanned.begin()];
+            return res[static_cast<std::size_t>(it - pArrScanned.begin())];
         };
         HX::print::println(getRes());
     };
