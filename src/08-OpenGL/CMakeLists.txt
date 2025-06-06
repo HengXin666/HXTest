@@ -19,6 +19,9 @@ add_subdirectory(lib/glm)
 add_subdirectory(lib/glfw)
 add_subdirectory(lib/glad)
 
+# 添加头文件
+include_directories(include)
+
 # 针对 C 库 target 禁用警告
 disable_warnings_if_target_exists(glfw)
 disable_warnings_if_target_exists(glad)

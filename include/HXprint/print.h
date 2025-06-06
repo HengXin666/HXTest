@@ -27,16 +27,12 @@
 #if defined(_MSC_VER) // MSVC
     #pragma warning(push)
     #pragma warning(disable: 4505) // C4505: 未使用的局部函数
-    #pragma warning(push)
     #pragma warning(disable: 4101) // C4101: 未使用的局部变量
-    #pragma warning(push)
     #pragma warning(disable: 4456) // C4456: 声明隐藏了一个局部变量
 #elif defined(__GNUC__) || defined(__clang__) // GCC 和 Clang
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wunused-function"
-    #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wunused-variable"
-    #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 
@@ -85,11 +81,7 @@ inline void println(Ts const&... ts) {
 // 恢复删除的警告
 #if defined(_MSC_VER) // MSVC
     #pragma warning(pop)
-    #pragma warning(pop)
-    #pragma warning(pop)
 #elif defined(__GNUC__) || defined(__clang__) // GCC 和 Clang
-    #pragma GCC diagnostic pop
-    #pragma GCC diagnostic pop
     #pragma GCC diagnostic pop
 #endif
 

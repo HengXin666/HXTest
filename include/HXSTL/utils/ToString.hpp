@@ -529,6 +529,21 @@ struct ToString<const T*> {
     }
 };
 
+// @todo 正确性待验证
+// C风格字符串指针 unsigned char
+template <typename T>
+    requires (std::same_as<const T*, const unsigned char*>)
+struct ToString<const T*> {
+    static std::string toString(const T* const& str) {
+        return std::string{(const char*)str};
+    }
+
+    template <typename Stream>
+    static void toString(const T* const& str, Stream& s) {
+        s.append(std::string{(const char*)str});
+    }
+};
+
 // C风格字符串指针 wchar_t
 template <typename T>
     requires (std::same_as<const T*, const wchar_t*>)
