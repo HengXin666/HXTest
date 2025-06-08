@@ -47,6 +47,8 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
             - [实验代码](src/06-std-analyse/test/05-vBaseClass/01-v_base_class.cpp)
         - 06-学习全局运算符重载和自定义字面量
             - [实验代码](src/06-std-analyse/test/06-my-op/01_my_op.cpp)
+        - 07-类型萃取
+            - [实验代码](src/06-std-analyse/test/07-TypeExtraction/01_type_extraction.cpp) (实现了 `is_void_v`/`remove_reference_t`/`is_same_v`)
 7. QT
    - 01-QML [QML-目录](./src/07-qt/01-qml/) | 笔记: [现代C++QT-QML](https://hengxin666.github.io/HXLoLi/docs/%E7%A8%8B%E5%BA%8F%E8%AF%AD%E8%A8%80/C++/%E7%8E%B0%E4%BB%A3C++/%E7%8E%B0%E4%BB%A3C++QT/QML/Window%E4%BB%8B%E7%BB%8D%E4%B8%B6%E5%88%9D%E8%AF%86)
 

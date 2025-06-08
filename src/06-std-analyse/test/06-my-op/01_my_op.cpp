@@ -17,7 +17,7 @@ std::string operator""_hx(const char* str, std::size_t len) {
     return {str, len};
 }
 
-std::string operator""_loli(uint64_t x) {
+std::string operator""_loli(unsigned long long x) {
     return std::to_string(x);
 }
 

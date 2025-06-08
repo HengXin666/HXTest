@@ -42,7 +42,7 @@ endforeach()" > ./src/$NAME/CMakeLists.txt
 
 echo "int main() {
     return 0;
-}" > ./src/$NAME/demo/00-example/01_main.cpp
+}" > ./src/$NAME/demo/00-example/01_main_$BUILD_NAME.cpp
 
 echo "
 已自动添加配置到 [cmake/subDir.cmake] 尾部"

@@ -60,3 +60,10 @@ if(BUILD_08_OPENGL)
     add_subdirectory(src/08-OpenGL)
     message("=-=-=-=-=-=-= Build 08-OpenGL =-=-=-=-=-=-=")
 endif()
+
+option(BUILD_09_LINUX "Build 09-Linux" ON)
+
+if(BUILD_09_LINUX)
+    add_subdirectory(src/09-Linux)
+    message("=-=-=-=-=-=-= Build 09-Linux =-=-=-=-=-=-=")
+endif()
