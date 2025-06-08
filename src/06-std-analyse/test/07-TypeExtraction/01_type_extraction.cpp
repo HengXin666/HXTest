@@ -19,7 +19,7 @@ struct IsVoid<void> {
 template <typename T>
 inline constexpr bool IsVoid_V = IsVoid<T>::val;
 
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=-==-=-=-=-==-=-=-=-=
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 template <typename T>
 struct RemoveReference {
@@ -38,7 +38,7 @@ struct RemoveReference<T&> {
 template <typename T>
 using RemoveReference_T = RemoveReference<T>::type;
 
-// =-=-=-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=-==-=-=-=-==-=-=-=-=
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 template <typename T, typename U>
 struct IsSame {
@@ -58,6 +58,16 @@ struct IsSame<T, T> {
 template <typename T, typename U>
 inline constexpr bool IsSame_V = IsSame<T, U>::val;
 
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+// 更加现代的写法
+
+template <typename, typename>
+inline constexpr bool IsSame_V2 = false;
+
+template <typename T>
+inline constexpr bool IsSame_V2<T, T> = true;
+
 } // namespace HX
 
 #define INFO_CODE(__CODE__) HX::print::println(#__CODE__": ", __CODE__)
@@ -71,8 +81,8 @@ int main() {
     using T1 = RemoveReference_T<int>;  // int
     using T2 = RemoveReference_T<int&>; // int
 
-    INFO_CODE((IsSame_V<int, int&>)); // false
-    INFO_CODE((IsSame_V<T1, T2>));    // true
+    INFO_CODE((IsSame_V2<int, int&>)); // false
+    INFO_CODE((IsSame_V2<T1, T2>));    // true
     return 0;
 }
 
