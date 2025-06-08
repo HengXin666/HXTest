@@ -26,7 +26,11 @@ foreach(TEST_FILE ${TEST_FILES})
     set_target_properties(${TEST_NAME} PROPERTIES FOLDER 05-exception/${PARENT_DIR})
 
     # 使用 Address Sanitizer
-    if(HX_DEBUG_BY_ADDRESS_SANITIZER AND CMAKE_BUILD_TYPE STREQUAL Debug)
-        target_compile_options(${TEST_NAME} PRIVATE -fsanitize=address)
+    if(HX_DEBUG_BY_ADDRESS_SANITIZER)
+        target_compile_options(${TEST_NAME} PRIVATE
+        $<$<CONFIG:Debug>:-fsanitize=address>)
+
+        target_link_options(${TEST_NAME} PRIVATE
+            $<$<CONFIG:Debug>:-fsanitize=address>)
     endif()
 endforeach()

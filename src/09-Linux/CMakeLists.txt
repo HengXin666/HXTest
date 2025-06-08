@@ -4,6 +4,11 @@ file(GLOB_RECURSE TEST_FILES CONFIGURE_DEPENDS
     ./demo/*.cpp
 )
 
+if(NOT WIN32)
+    set(HX_DEBUG_BY_ADDRESS_SANITIZER TRUE)
+endif()
+
+
 # 遍历每个 .cpp 文件, 生成可执行文件
 foreach(TEST_FILE ${TEST_FILES})
     # 提取 .cpp 文件名作为目标名 (去掉路径和扩展名)
@@ -26,7 +31,11 @@ foreach(TEST_FILE ${TEST_FILES})
     set_target_properties(${TEST_NAME} PROPERTIES FOLDER 09-Linux/${PARENT_DIR})
 
     # 使用 Address Sanitizer
-    if(HX_DEBUG_BY_ADDRESS_SANITIZER AND CMAKE_BUILD_TYPE STREQUAL Debug)
-        target_compile_options(${TEST_NAME} PRIVATE -fsanitize=address)
+    if(HX_DEBUG_BY_ADDRESS_SANITIZER)
+        target_compile_options(${TEST_NAME} PRIVATE
+        $<$<CONFIG:Debug>:-fsanitize=address>)
+
+        target_link_options(${TEST_NAME} PRIVATE
+            $<$<CONFIG:Debug>:-fsanitize=address>)
     endif()
 endforeach()
