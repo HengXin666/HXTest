@@ -561,13 +561,13 @@ struct ToString<const T*> {
 // C风格指针
 template <typename T>
 struct ToString<T*> {
-    static std::string toString(T* const& p) {
-        return HX::STL::utils::NumericBaseConverter::hexadecimalConversion(static_cast<std::size_t>(p));
+    static std::string toString(T* const p) {
+        return HX::STL::utils::NumericBaseConverter::hexadecimalConversion(reinterpret_cast<std::uintptr_t>(p));
     }
 
     template <typename Stream>
-    static void toString(T* const& p, Stream& s) {
-        s.append(HX::STL::utils::NumericBaseConverter::hexadecimalConversion(static_cast<std::size_t>(p)));
+    static void toString(T* const p, Stream& s) {
+        s.append(HX::STL::utils::NumericBaseConverter::hexadecimalConversion(reinterpret_cast<std::uintptr_t>(p)));
     }
 };
 

@@ -11,6 +11,7 @@
 // https://unixism.net/loti/
 // https://man7.org/linux/man-pages/man7/io_uring.7.html
 
+// https://github.com/0voice/kernel_new_features
 // https://cuterwrite.top/p/efficient-liburing/
 
 namespace HX {
@@ -34,6 +35,56 @@ struct IoUringErrorHandlingTools {
     }
 };
 
+template <typename T>
+struct Promise {
+    T _value;
+
+    std::suspend_always initial_suspend() noexcept { return {}; }
+    auto get_return_object() noexcept {
+        return std::coroutine_handle<Promise>::from_promise(*this);
+    }
+    std::suspend_always final_suspend() noexcept { return {}; }
+    void return_value(T&& value) noexcept {
+        _value = std::forward<T>(value);
+    }
+    void unhandled_exception() noexcept {
+        std::terminate();
+    }
+};
+
+template <>
+struct Promise<void> {
+    std::suspend_always initial_suspend() noexcept { return {}; }
+    auto get_return_object() noexcept {
+        return std::coroutine_handle<Promise>::from_promise(*this);
+    }
+    std::suspend_always final_suspend() noexcept { return {}; }
+    void return_void() noexcept { }
+    void unhandled_exception() noexcept {
+        std::terminate();
+    }
+};
+
+template <typename T = void>
+struct Task {
+    using promise_type = Promise<T>;
+
+    Task(std::coroutine_handle<promise_type> h = nullptr)
+        : _handle(h)
+    {}
+
+    ~Task() { if (_handle) _handle.destroy(); }
+
+    Task& operator=(Task&&) noexcept = delete;
+
+    operator std::coroutine_handle<>() const noexcept {
+        return _handle;
+    }
+
+private:
+    std::coroutine_handle<promise_type> _handle;
+};
+
 struct AioTask {
     AioTask(::io_uring_sqe* sqe) noexcept
         : _sqe{sqe}
@@ -41,15 +92,19 @@ struct AioTask {
         ::io_uring_sqe_set_data(_sqe, this);
     }
 
+#if 0 // 注意: 不能存在`移动`, 否则 IoUring::makeAioTask 返回就是 构造的新对象; 屏蔽了移动, 反而是编译器优化!
     AioTask& operator=(AioTask const&) noexcept = delete;
     AioTask(AioTask const&) noexcept = delete;
 
     AioTask(AioTask&&) noexcept = default;
     AioTask& operator=(AioTask&&) noexcept = default;
+#else
+    AioTask& operator=(AioTask&&) noexcept = delete;
+#endif
 
     struct AioAwaiter {
         constexpr bool await_ready() const noexcept { return false; }
-        constexpr auto await_suspend(std::coroutine_handle<> coroutine) const noexcept {
+        constexpr void await_suspend(std::coroutine_handle<> coroutine) const noexcept {
             _task->_previous = coroutine;
             _task->_res = -ENOSYS;
         }
@@ -74,6 +129,45 @@ private:
 
 public:
     // IO 操作 ...
+    /**
+     * @brief 异步读取文件
+     * @param fd 文件描述符
+     * @param buf [out] 读取到的数据
+     * @param offset 文件偏移量
+     * @return AioTask&& 
+     */
+    [[nodiscard]] AioTask&& prepRead(
+        int fd,
+        std::span<char> buf,
+        std::uint64_t offset
+    ) && {
+        ::io_uring_prep_read(_sqe, fd, buf.data(), static_cast<unsigned int>(buf.size()), offset);
+        return std::move(*this);
+    }
+
+    /**
+     * @brief 创建未链接的超时操作
+     * @param ts 超时时间
+     * @param flags 
+     * @return AioTask&& 
+     */
+    [[nodiscard]] AioTask&& prepLinkTimeout(
+        struct __kernel_timespec *ts,
+        unsigned int flags
+    ) && {
+        ::io_uring_prep_link_timeout(_sqe, ts, flags);
+        return std::move(*this);
+    }
+
+    [[nodiscard]] inline static constexpr AioTask&& linkTimeout(AioTask&& lhs, AioTask&& rhs) {
+        lhs._sqe->flags |= IOSQE_IO_LINK;
+        static_cast<void>(rhs);
+        return std::move(lhs);
+    }
+
+    ~AioTask() noexcept {
+        HX::print::println(this, " 自杀了");
+    }
 };
 
 struct IoUring {
@@ -93,7 +187,14 @@ struct IoUring {
     }
 
     AioTask makeAioTask() {
+        // mandatory copy elision 场景
+        // 编译器强制使用 RVO (返回值优化)
+        // https://en.cppreference.com/w/cpp/language/copy_elision.html
         return AioTask{getSqe()};
+    }
+
+    bool isRun() const noexcept {
+        return _numSqesPending;
     }
 
     void run(std::optional<std::chrono::system_clock::duration> timeout) {
@@ -123,23 +224,24 @@ struct IoUring {
         }
 
         unsigned head, numGot = 0;
-        std::vector<std::coroutine_handle<>> tasks;
         io_uring_for_each_cqe(&_ring, head, cqe) {
             ++numGot;
 
             // @todo, 不能这样, 太多 if 了
-            if (cqe->res < 0 
-                && !(cqe->res == -ENOENT 
-                    || cqe->res == -EACCES 
-                    || cqe->res == -EAGAIN 
-                    || cqe->res == -ECONNRESET 
-                    || cqe->res == -EPIPE
-                )
+            if (cqe->res < 0
+                // && !(cqe->res == -ENOENT        // 文件或目录不存在（可能是非致命错误，例如取消已完成请求）
+                //     || cqe->res == -EACCES      // 权限被拒绝（比如尝试访问受限文件）
+                //     || cqe->res == -EAGAIN      // 资源暂时不可用（一般是非阻塞IO导致的，可重试）
+                //     || cqe->res == -ECONNRESET  // 连接被对方重置（网络编程中常见）
+                //     || cqe->res == -EPIPE       // 管道破裂（例如写入已关闭的 socket）
+                // )
             ) {
                 printf("Critical error: %s\n", strerror(-cqe->res));
-
-                continue;
+                if (cqe->res == -ECANCELED) { // 操作已取消 (比如超时了)
+                    continue;
+                }
             }
+
             auto* task = reinterpret_cast<AioTask*>(cqe->user_data);
             task->_res = cqe->res;
             tasks.push_back(task->_previous);
@@ -151,6 +253,8 @@ struct IoUring {
         for (const auto& it : tasks) {
             it.resume();
         }
+
+        tasks.clear();
     }
 
 private:
@@ -183,11 +287,63 @@ private:
 
     ::io_uring _ring;
     std::size_t _numSqesPending; // 未完成的任务数
+    std::vector<std::coroutine_handle<>> tasks; // 协程任务队列
+                                                // 提取为成员, 避免频繁构造临时变量导致频繁扩容
+};
+
+struct Loop {
+    void start() {
+        auto tasks = task();
+        static_cast<std::coroutine_handle<>>(tasks).resume();
+        while (ioUring.isRun()) {
+            ioUring.run({});
+        }
+    }
+    
+private:
+    Task<> task() {
+        using namespace HX;
+        using namespace std::chrono;
+        auto kt = durationToKernelTimespec(3s);
+        print::println("Task<> start!");
+        while (true) {
+            std::string buf;
+            buf.resize(128);
+            std::cerr << "cin >> ";
+            co_await AioTask::linkTimeout(
+                ioUring.makeAioTask().prepRead(STDIN_FILENO, buf, 0),
+                ioUring.makeAioTask().prepLinkTimeout(&kt, 0)
+            );
+            // co_await ioUring.makeAioTask().prepRead(STDIN_FILENO, buf, 0);
+            if (auto pos = buf.find('\n'); pos != std::string::npos) {
+                buf[pos] = '\0';
+            }
+            if (buf.find("exit") != std::string::npos) [[unlikely]] {
+                break;
+            }
+            print::println("echo: ", buf);
+        }
+        co_return;
+    }
+
+    IoUring ioUring{128};
 };
 
 } // namespace HX
 
+/*
+    模型
+
+    task(); // 启动任务, 等任务挂起了
+    loop(); ->  while (io_uring.isRun()) {
+                    io_uring.run(); // 采用中断, 恢复协程
+                }
+*/
+
 int main() {
     using namespace HX;
+    setlocale(LC_ALL, "zh_CN.UTF-8");
+    Loop loop;
+    loop.start();
     return 0;
 }
