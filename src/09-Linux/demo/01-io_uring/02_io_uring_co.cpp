@@ -3,6 +3,7 @@
 #include <cstring>
 #include <chrono>
 #include <coroutine>
+#include <thread>
 
 #include <liburing.h>
 
@@ -13,6 +14,9 @@
 
 // https://github.com/0voice/kernel_new_features
 // https://cuterwrite.top/p/efficient-liburing/
+
+#include <coroutine/task/Task.hpp>
+#include <coroutine/awaiter/WhenAny.hpp>
 
 namespace HX {
 
@@ -33,56 +37,6 @@ struct IoUringErrorHandlingTools {
         }
         return code;
     }
-};
-
-template <typename T>
-struct Promise {
-    T _value;
-
-    std::suspend_always initial_suspend() noexcept { return {}; }
-    auto get_return_object() noexcept {
-        return std::coroutine_handle<Promise>::from_promise(*this);
-    }
-    std::suspend_always final_suspend() noexcept { return {}; }
-    void return_value(T&& value) noexcept {
-        _value = std::forward<T>(value);
-    }
-    void unhandled_exception() noexcept {
-        std::terminate();
-    }
-};
-
-template <>
-struct Promise<void> {
-    std::suspend_always initial_suspend() noexcept { return {}; }
-    auto get_return_object() noexcept {
-        return std::coroutine_handle<Promise>::from_promise(*this);
-    }
-    std::suspend_always final_suspend() noexcept { return {}; }
-    void return_void() noexcept { }
-    void unhandled_exception() noexcept {
-        std::terminate();
-    }
-};
-
-template <typename T = void>
-struct Task {
-    using promise_type = Promise<T>;
-
-    Task(std::coroutine_handle<promise_type> h = nullptr)
-        : _handle(h)
-    {}
-
-    ~Task() { if (_handle) _handle.destroy(); }
-
-    Task& operator=(Task&&) noexcept = delete;
-
-    operator std::coroutine_handle<>() const noexcept {
-        return _handle;
-    }
-
-private:
-    std::coroutine_handle<promise_type> _handle;
 };
 
 struct AioTask {
@@ -340,10 +294,35 @@ private:
                 }
 */
 
+using namespace std::chrono;
+
+HX::Task<> func02() {
+    HX::print::println("func02 ---");
+    // std::this_thread::sleep_for(2s);
+    HX::print::println("func02 ---");
+    co_return;
+}
+
+HX::Task<> func03() {
+    HX::print::println("func03 ---");
+    // std::this_thread::sleep_for(3s);
+    HX::print::println("func03 ---");
+    co_return;
+}
+
+
+HX::Task<> func01() {
+    HX::print::println("func01 {");
+    co_await HX::whenAny(func02(), func03());
+    HX::print::println("} // func01");
+    co_return;
+}
+
 int main() {
     using namespace HX;
     setlocale(LC_ALL, "zh_CN.UTF-8");
-    Loop loop;
-    loop.start();
+    // Loop loop;
+    // loop.start();
+    static_cast<std::coroutine_handle<>>(func01())();
     return 0;
 }

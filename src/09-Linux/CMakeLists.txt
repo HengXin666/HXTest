@@ -14,6 +14,7 @@ if(NOT WIN32)
 
 endif()
 
+include_directories(include)
 
 # 遍历每个 .cpp 文件, 生成可执行文件
 foreach(TEST_FILE ${TEST_FILES})
