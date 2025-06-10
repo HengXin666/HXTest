@@ -1,0 +1,147 @@
+#pragma once
+/*
+ * Copyright Heng_Xin. All rights reserved.
+ *
+ * @Author: Heng_Xin
+ * @Date: 2025-06-10 22:37:12
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *	  https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#ifndef _HX_UNINITIALIZED_NON_VOID_VARIANT_H_
+#define _HX_UNINITIALIZED_NON_VOID_VARIANT_H_
+
+#include <utility>
+
+#include <tools/NonVoidHelper.hpp>
+
+namespace HX {
+
+namespace internal {
+
+template <std::size_t Idx, typename T>
+struct UninitializedNonVoidVariantHead {
+    NonVoidType<T> _data;
+};
+
+template <std::size_t Idx, typename... Ts>
+struct UninitializedNonVoidVariantImpl;
+
+template <std::size_t Idx, typename T>
+struct UninitializedNonVoidVariantImpl<Idx, T> {
+    using UVariant = UninitializedNonVoidVariantImpl;
+
+    union {
+        UninitializedNonVoidVariantHead<Idx, T> _head;
+    };
+
+    template <std::size_t Index>
+    inline static constexpr NonVoidType<T>& get(UVariant& v) noexcept {
+        return v._head._data;
+    }
+
+    template <std::size_t Index>
+    inline static constexpr auto&& get(UVariant&& v) noexcept {
+        return std::move(v._head._data);
+    }
+};
+
+template <std::size_t Idx, typename T, typename... Ts>
+struct UninitializedNonVoidVariantImpl<Idx, T, Ts...> {
+    using UVariant = UninitializedNonVoidVariantImpl;
+
+    union {
+        UninitializedNonVoidVariantHead<Idx, T> _head;
+        UninitializedNonVoidVariantImpl<Idx + 1, Ts...> _body;
+    };
+
+    template <std::size_t Index>
+    inline static constexpr auto& get(UVariant& v) noexcept {
+        if constexpr (Index == Idx) {
+            return v._head._data;
+        } else {
+            return UninitializedNonVoidVariantImpl<Idx + 1, Ts...>::template get<Index>(v._body);
+        }
+    }
+
+    template <std::size_t Index>
+    inline static constexpr auto&& get(UVariant&& v) noexcept {
+        if constexpr (Index == Idx) {
+            return std::move(v._head._data);
+        } else {
+            return std::move(
+                UninitializedNonVoidVariantImpl<Idx + 1, Ts...>::template get<Index>(std::move(v._body))
+            );
+        }
+    }
+};
+
+} // namespace internal
+
+inline constexpr std::size_t UninitializedNonVoidVariantNpos = static_cast<std::size_t>(-1);
+
+/**
+ * @brief 一个支持任意类型的 Variant, 内部类型可以重复, 支持 void, 访问不受约束 (日后可能会支持约束版本)
+ *        get<Idx>(v) = xxx; // 内部索引会直接变, 调用者需要保证类型本身支持 = 运算符.
+ * @tparam ...Ts
+ */
+template <typename... Ts>
+struct UninitializedNonVoidVariant {
+    inline static constexpr std::size_t N = sizeof...(Ts);
+
+    std::size_t index() const noexcept {
+        return _idx;
+    }
+
+    template <std::size_t Idx>
+        requires (Idx <= N)
+    constexpr auto& get() & noexcept {
+        _idx = Idx;
+        return internal::UninitializedNonVoidVariantImpl<0, Ts...>::template get<Idx>(_data);
+    }
+
+    template <std::size_t Idx>
+        requires (Idx <= N)
+    constexpr auto&& get() && noexcept {
+        _idx = UninitializedNonVoidVariantNpos;
+        return std::move(
+            internal::UninitializedNonVoidVariantImpl<0, Ts...>::template get<Idx>(std::move(_data))
+        );
+    }
+
+    // @todo
+    // template <typename T, typename... Args>
+    // T emplace(Args&&... args) {
+    //     new (std::addressof(_data)) T(std::forward<Args>(args)...);
+    //     return _data;
+    // }
+    
+private:
+    internal::UninitializedNonVoidVariantImpl<0, Ts...> _data;
+    std::size_t _idx{UninitializedNonVoidVariantNpos};
+};
+
+template <std::size_t Idx, typename... Ts,
+    typename = std::enable_if_t<(Idx <= UninitializedNonVoidVariant<Ts...>::N)>>
+auto& get(UninitializedNonVoidVariant<Ts...>& v) noexcept {
+    return v.template get<Idx>();
+}
+
+template <std::size_t Idx, typename... Ts,
+    typename = std::enable_if_t<(Idx <= UninitializedNonVoidVariant<Ts...>::N)>>
+auto&& get(UninitializedNonVoidVariant<Ts...>&& v) noexcept {
+    return std::move(std::move(v).template get<Idx>());
+}
+
+} // namespace HX
+
+#endif // !_HX_UNINITIALIZED_NON_VOID_VARIANT_H_

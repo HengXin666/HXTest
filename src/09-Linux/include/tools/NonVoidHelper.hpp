@@ -34,6 +34,9 @@ struct NonVoidHelper<void> {
     explicit NonVoidHelper() noexcept = default;
 };
 
+template <typename T>
+using NonVoidType = NonVoidHelper<T>::Type;
+
 } // namespace HX
 
 #endif // !_HX_NON_VOID_HELPER_H_

@@ -113,10 +113,9 @@ public:
         return std::move(*this);
     }
 
-    [[nodiscard]] inline static constexpr AioTask&& linkTimeout(AioTask&& lhs, AioTask&& rhs) {
+    [[nodiscard]] inline static auto linkTimeout(AioTask&& lhs, AioTask&& rhs) {
         lhs._sqe->flags |= IOSQE_IO_LINK;
-        static_cast<void>(rhs);
-        return std::move(lhs);
+        return whenAny(std::move(lhs), std::move(rhs));
     }
 
     ~AioTask() noexcept {
@@ -264,10 +263,17 @@ private:
             std::string buf;
             buf.resize(128);
             std::cerr << "cin >> ";
-            co_await AioTask::linkTimeout(
+            auto res = co_await AioTask::linkTimeout(
                 ioUring.makeAioTask().prepRead(STDIN_FILENO, buf, 0),
                 ioUring.makeAioTask().prepLinkTimeout(&kt, 0)
             );
+            std::cout << res.index() << "] ";
+
+            if (res.index() == 1) {
+                print::println("时间到了哦~");
+                break;
+            }
+            
             // co_await ioUring.makeAioTask().prepRead(STDIN_FILENO, buf, 0);
             if (auto pos = buf.find('\n'); pos != std::string::npos) {
                 buf[pos] = '\0';
@@ -313,7 +319,11 @@ HX::Task<> func03() {
 
 HX::Task<> func01() {
     HX::print::println("func01 {");
-    co_await HX::whenAny(func02(), func03());
+    co_await HX::whenAny(
+        func02(),
+        []() -> HX::Task<> { co_return; }(), 
+        func03()
+    );
     HX::print::println("} // func01");
     co_return;
 }
@@ -321,8 +331,8 @@ HX::Task<> func01() {
 int main() {
     using namespace HX;
     setlocale(LC_ALL, "zh_CN.UTF-8");
-    // Loop loop;
-    // loop.start();
-    static_cast<std::coroutine_handle<>>(func01())();
+    Loop loop;
+    loop.start();
+    // static_cast<std::coroutine_handle<>>(func01())();
     return 0;
 }

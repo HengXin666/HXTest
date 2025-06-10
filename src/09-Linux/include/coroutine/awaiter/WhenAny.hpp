@@ -22,11 +22,13 @@
 
 #include <utility>
 #include <array>
-#include <variant>
 
 #include <tools/Uninitialized.hpp>
+#include <tools/UninitializedNonVoidVariant.hpp>
 #include <coroutine/concepts/Awaiter.hpp>
 #include <coroutine/task/Task.hpp>
+
+#include <HXprint/print.h>
 
 namespace HX {
 
@@ -39,87 +41,78 @@ struct WhenAnyCtlBlock {
     std::coroutine_handle<> previous;
 };
 
+struct WhenAnyPromise {
+    std::suspend_always initial_suspend() noexcept { return {}; }
+    auto get_return_object() noexcept {
+        return std::coroutine_handle<WhenAnyPromise>::from_promise(*this);
+    }
+    HX::PreviousAwaiter final_suspend() noexcept { return {_mainCoroutine}; }
+    void return_value(std::coroutine_handle<> previous) noexcept {
+        _mainCoroutine = previous;
+    }
+    void unhandled_exception() noexcept {
+        std::terminate();
+    }
+    std::coroutine_handle<> _mainCoroutine;
+};
+
 struct WhenAnyAwaiter {
     constexpr bool await_ready() const noexcept { return false; }
     constexpr auto await_suspend(std::coroutine_handle<> coroutine) const noexcept {
         ctlBlock.previous = coroutine;
-        return _coroutine;
+        for (const auto& co : cos.subspan(0, cos.size() - 1)) {
+            auto coH = static_cast<std::coroutine_handle<>>(co);
+            coH.resume();
+            if (coH.done()) {
+                return coroutine;
+            }
+        }
+        return static_cast<std::coroutine_handle<>>(cos.back());
     }
     constexpr void await_resume() const noexcept {}
 
-    std::coroutine_handle<> _coroutine;
+    std::span<Task<std::coroutine_handle<>, WhenAnyPromise> const> cos;
     WhenAnyCtlBlock& ctlBlock;
 };
 
-struct WhenAnyTask {
-    using promise_type = Promise<void>;
-
-    WhenAnyTask(std::coroutine_handle<promise_type> h)
-        : _handle(h)
-    {}
-
-    auto operator co_await() noexcept {
-        return WhenAnyAwaiter{_handle, *ctlBlockPtr};
-    }
-
-    ~WhenAnyTask() { if (_handle) _handle.destroy(); }
-
-    std::coroutine_handle<promise_type> _handle;
-    WhenAnyCtlBlock* ctlBlockPtr{};
-};
-
-template <std::size_t Idx, Awaiter T, typename Arr>
-Task<std::coroutine_handle<>> start(
-    T&& t, Arr& resArr, std::size_t& resIdx, WhenAnyCtlBlock& ctlBlock
-) {
-    if (ctlBlock.previous == std::noop_coroutine()) {
-        co_return std::noop_coroutine();
-    }
-
-    if constexpr (!std::is_void_v<decltype(t.operator co_await().await_resume())>) {
-        resArr[Idx] = co_await t;
-    } else {
+template <std::size_t Idx, Awaiter T, typename Res>
+Task<std::coroutine_handle<>, WhenAnyPromise> start(
+    T&& t, Res& res, WhenAnyCtlBlock& ctlBlock
+) {  
+    if constexpr (std::is_void_v<decltype(t.operator co_await().await_resume())>) {
         co_await t;
+    } else {
+        HX::get<Idx>(res) = std::move(co_await t);
     }
-    resIdx = Idx;
-
-    // !!! @todo !!!
-    auto res = ctlBlock.previous;
-    ctlBlock.previous = std::noop_coroutine();
-    co_return res;
+    co_return ctlBlock.previous;
 }
+
+// UninitializedNonVoidVariant
 
 template <
     std::size_t... Idx, 
     Awaiter... Ts, 
-    typename ResType = std::variant<
-        typename NonVoidHelper<decltype(
-                std::declval<Ts>().operator co_await().await_resume()
-            )>::Type...>
+    typename ResType = UninitializedNonVoidVariant<
+        decltype(
+            std::declval<Ts>().operator co_await().await_resume()
+        )...
+    >
 >
 Task<ResType> whenAny(std::index_sequence<Idx...>, Ts&&... ts) {
-    // 1. 计算返回值
-    // using ResType = std::variant<NonVoidHelper<decltype(std::declval<Ts>().await_resume())>...>;
+    // 1. 存储所有的返回值
+    ResType res;
 
-    // 2. 存储所有的返回值
-    std::array<ResType, sizeof...(Ts)> resArr;
-    std::size_t resIdx = static_cast<std::size_t>(-1);
-
-    // 3. 启动所有协程
+    // 2. 启动所有协程
     WhenAnyCtlBlock block;
-    WhenAnyTask wyTask = [&]() -> WhenAnyTask {
-        (
-            (co_await start<Idx>(std::forward<Ts>(ts), resArr, resIdx, block)).resume()
-        , ...);
-        co_return;
-    }();
-    wyTask.ctlBlockPtr = &block;
+    std::array<Task<std::coroutine_handle<>, WhenAnyPromise>, sizeof...(Ts)> cos {
+        start<Idx>(std::forward<Ts>(ts), res, block)...
+    };
 
-    // 4. 等待其中一个 (挂起)
-    co_await wyTask;
-
-    // 5. 通过返回值确定返回谁
-    co_return resArr[resIdx];
+    // 3. 等待其中一个 (挂起)
+    co_await WhenAnyAwaiter{cos, block};
+    
+    // 4. 通过返回值确定返回谁
+    co_return res;
 }
 
 } // namespace internal
