@@ -2,21 +2,30 @@
 
 #include <tools/UninitializedNonVoidVariant.hpp>
 
-struct Awa {
-    Awa() = default;
+using namespace HX;
 
+struct Awa {
     ~Awa() noexcept {
         HX::print::println("~A");
     }
 };
 
+
+
 int main() {
-    using namespace HX;
-    UninitializedNonVoidVariant<int, Awa> awa;
-    auto& res = get<0>(awa);
-    res = 0x7F'FF'FF'FF;
+    UninitializedNonVoidVariant<int, Awa, std::string> awa;
+    awa.emplace<Awa>();
+    // auto& res = get<0>(awa);
+    // res = 0x7F'FF'FF'FF;
     (void)awa;
-    get<1>(awa) = {};
-    // HX::print::println("get: ", (unsigned char)get<0>(awa));
+    // get<1>(awa) = {};
+
+
+    constexpr auto idx2
+        = UninitializedNonVoidVariantIndexVal<Awa, UninitializedNonVoidVariant<int, Awa>>;
+
+    print::println("idx2 = ", idx2);
+
+    HX::print::println("get: ", get<1>(awa));
     return 0;
 }

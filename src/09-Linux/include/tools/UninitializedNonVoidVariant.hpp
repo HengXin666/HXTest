@@ -21,10 +21,15 @@
 #define _HX_UNINITIALIZED_NON_VOID_VARIANT_H_
 
 #include <utility>
+#include <memory>
 
 #include <tools/NonVoidHelper.hpp>
+#include <tools/ExceptionMode.hpp>
 
 namespace HX {
+
+template <typename... Ts>
+struct UninitializedNonVoidVariant;
 
 namespace internal {
 
@@ -59,9 +64,6 @@ template <std::size_t Idx, typename T, typename... Ts>
 struct UninitializedNonVoidVariantImpl<Idx, T, Ts...> {
     using UVariant = UninitializedNonVoidVariantImpl;
 
-    UninitializedNonVoidVariantImpl() noexcept {}
-    ~UninitializedNonVoidVariantImpl() noexcept {}
-
     union {
         UninitializedNonVoidVariantHead<Idx, T> _head;
         UninitializedNonVoidVariantImpl<Idx + 1, Ts...> _body;
@@ -88,9 +90,43 @@ struct UninitializedNonVoidVariantImpl<Idx, T, Ts...> {
     }
 };
 
+template <typename T, typename... Ts>
+struct UninitializedNonVoidVariantIndex;
+
+template <typename T, typename... Ts>
+struct UninitializedNonVoidVariantIndex<T, UninitializedNonVoidVariant<Ts...>> {
+    template <typename U, typename... Us>
+    struct _FindIndex;
+    
+    template <typename U, typename... Us>
+    struct _FindIndex {
+        inline static constexpr std::size_t val 
+            = std::is_same_v<T, U> 
+                ? 0 
+                : UninitializedNonVoidVariantIndex<
+                    T, UninitializedNonVoidVariant<Ts...>
+                  >::_FindIndex<Us...>::val + 1;
+    };
+
+    template <typename U>
+    struct _FindIndex<U> {
+        inline static constexpr std::size_t val = 0;
+    };
+
+    inline static constexpr std::size_t val
+        = UninitializedNonVoidVariantIndex<
+            T, UninitializedNonVoidVariant<Ts...>
+          >::_FindIndex<Ts...>::val;
+};
+
 } // namespace internal
 
-inline constexpr std::size_t UninitializedNonVoidVariantNpos = static_cast<std::size_t>(-1);
+inline constexpr std::size_t UninitializedNonVoidVariantNpos
+    = static_cast<std::size_t>(-1);
+
+template <typename T, typename UVariant>
+inline constexpr std::size_t UninitializedNonVoidVariantIndexVal
+    = internal::UninitializedNonVoidVariantIndex<T, UVariant>::val;
 
 /**
  * @brief 一个支持任意类型的 Variant, 内部类型可以重复, 支持 void, 访问不受约束 (日后可能会支持约束版本)
@@ -101,44 +137,57 @@ template <typename... Ts>
 struct UninitializedNonVoidVariant {
     inline static constexpr std::size_t N = sizeof...(Ts);
 
-    explicit UninitializedNonVoidVariant() noexcept
+    UninitializedNonVoidVariant() noexcept
         : _idx{UninitializedNonVoidVariantNpos}
-        , _data()
     {}
 
-    
+    template <typename T>
+    explicit UninitializedNonVoidVariant(T&& t) noexcept(std::is_nothrow_constructible_v<T, T&&>)
+        : _idx{UninitializedNonVoidVariantIndexVal<T, UninitializedNonVoidVariant>}
+    {
+        constexpr std::size_t Idx = UninitializedNonVoidVariantIndexVal<T, UninitializedNonVoidVariant>;
+        new (std::addressof(get<Idx, ExceptionMode::Nothrow>())) T(std::forward<T>(t));
+    }
 
     std::size_t index() const noexcept {
         return _idx;
     }
 
-    template <std::size_t Idx>
+    template <std::size_t Idx, ExceptionMode EMode = ExceptionMode::Throw>
         requires (Idx <= N)
-    constexpr auto& get() & noexcept {
-        _idx = Idx;
+    constexpr auto& get() & noexcept(EMode == ExceptionMode::Nothrow) {
+        if constexpr (EMode == ExceptionMode::Throw) {
+            if (_idx != Idx) [[unlikely]] {
+                throw std::runtime_error("get: wrong index for variant");
+            }
+        }
         return internal::UninitializedNonVoidVariantImpl<0, Ts...>::template get<Idx>(_data);
     }
 
-    template <std::size_t Idx>
+    template <std::size_t Idx, ExceptionMode EMode = ExceptionMode::Throw>
         requires (Idx <= N)
-    constexpr auto&& get() && noexcept {
-        _idx = UninitializedNonVoidVariantNpos;
+    constexpr auto&& get() && noexcept(EMode == ExceptionMode::Nothrow) {
+        if constexpr (EMode == ExceptionMode::Throw) {
+            if (_idx != Idx) [[unlikely]] {
+                throw std::runtime_error("get: wrong index for variant");
+            }
+        }
         return std::move(
             internal::UninitializedNonVoidVariantImpl<0, Ts...>::template get<Idx>(std::move(_data))
         );
     }
 
-    // @todo
-    // template <typename T, typename... Args>
-    // T emplace(Args&&... args) {
-    //     new (std::addressof(_data)) T(std::forward<Args>(args)...);
-    //     return _data;
-    // }
+    template <typename T, typename... Args>
+    T& emplace(Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args...>) {
+        del(std::make_index_sequence<N>{});
+        constexpr std::size_t Idx = UninitializedNonVoidVariantIndexVal<T, UninitializedNonVoidVariant>;
+        _idx = Idx;
+        new (std::addressof(_data)) T(std::forward<Args>(args)...);
+        return get<Idx, ExceptionMode::Nothrow>();
+    }
     
     ~UninitializedNonVoidVariant() noexcept {
-        if (_idx != UninitializedNonVoidVariantNpos) {
-            del(std::make_index_sequence<N>{});
-        }
+        del(std::make_index_sequence<N>{});
     }
 
 private:
@@ -146,24 +195,31 @@ private:
     void del(std::index_sequence<Idx...>) noexcept {
         using DelFuncPtr = void (*)(UninitializedNonVoidVariant& u);
         static DelFuncPtr delFuncs[N] {
-            [](UninitializedNonVoidVariant& u){ u.get<Idx>().~Ts(); }...
+            [](UninitializedNonVoidVariant& u){ u.get<Idx, ExceptionMode::Nothrow>().~Ts(); }...
         };
-        delFuncs[_idx](*this);
+        if (_idx != UninitializedNonVoidVariantNpos) {
+            delFuncs[_idx](*this);
+        }
     }
 
     std::size_t _idx;
-    internal::UninitializedNonVoidVariantImpl<0, Ts...> _data;
+
+    union {
+        internal::UninitializedNonVoidVariantImpl<0, Ts...> _data;
+    };
 };
 
-template <std::size_t Idx, typename... Ts,
+template <std::size_t Idx, typename... Ts, 
+    ExceptionMode EMode = ExceptionMode::Throw,
     typename = std::enable_if_t<(Idx <= UninitializedNonVoidVariant<Ts...>::N)>>
-auto& get(UninitializedNonVoidVariant<Ts...>& v) noexcept {
+auto& get(UninitializedNonVoidVariant<Ts...>& v) noexcept(EMode == ExceptionMode::Nothrow) {
     return v.template get<Idx>();
 }
 
-template <std::size_t Idx, typename... Ts,
+template <std::size_t Idx, typename... Ts, 
+    ExceptionMode EMode = ExceptionMode::Throw,
     typename = std::enable_if_t<(Idx <= UninitializedNonVoidVariant<Ts...>::N)>>
-auto&& get(UninitializedNonVoidVariant<Ts...>&& v) noexcept {
+auto&& get(UninitializedNonVoidVariant<Ts...>&& v) noexcept(EMode == ExceptionMode::Nothrow) {
     return std::move(std::move(v).template get<Idx>());
 }
 
