@@ -15,17 +15,18 @@ struct Awa {
 int main() {
     UninitializedNonVoidVariant<int, Awa, std::string> awa;
     awa.emplace<Awa>();
-    // auto& res = get<0>(awa);
-    // res = 0x7F'FF'FF'FF;
-    (void)awa;
-    // get<1>(awa) = {};
-
+    awa.reset();
+    awa.emplace<std::string>("Woc Nb!");
 
     constexpr auto idx2
         = UninitializedNonVoidVariantIndexVal<Awa, UninitializedNonVoidVariant<int, Awa>>;
 
     print::println("idx2 = ", idx2);
 
-    HX::print::println("get: ", get<1>(awa));
+    HX::print::println("get: ", get<2>(awa));
+
+    get<std::string>(awa) = "awa";
+
+    HX::print::println("get: ", get<2>(awa));
     return 0;
 }

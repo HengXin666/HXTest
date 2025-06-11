@@ -328,8 +328,6 @@ HX::Task<> func01() {
     co_return;
 }
 
-#include <variant>
-
 int main() {
     using namespace HX;
     setlocale(LC_ALL, "zh_CN.UTF-8");

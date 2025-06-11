@@ -110,7 +110,8 @@ struct UninitializedNonVoidVariantIndex<T, UninitializedNonVoidVariant<Ts...>> {
 
     template <typename U>
     struct _FindIndex<U> {
-        inline static constexpr std::size_t val = 0;
+        inline static constexpr std::size_t val 
+            = !std::is_same_v<T, U>;
     };
 
     inline static constexpr std::size_t val
@@ -124,6 +125,7 @@ struct UninitializedNonVoidVariantIndex<T, UninitializedNonVoidVariant<Ts...>> {
 inline constexpr std::size_t UninitializedNonVoidVariantNpos
     = static_cast<std::size_t>(-1);
 
+// 如果不存在, 则返回 UVariant::N
 template <typename T, typename UVariant>
 inline constexpr std::size_t UninitializedNonVoidVariantIndexVal
     = internal::UninitializedNonVoidVariantIndex<T, UVariant>::val;
@@ -154,7 +156,7 @@ struct UninitializedNonVoidVariant {
     }
 
     template <std::size_t Idx, ExceptionMode EMode = ExceptionMode::Throw>
-        requires (Idx <= N)
+        requires (Idx < N)
     constexpr auto& get() & noexcept(EMode == ExceptionMode::Nothrow) {
         if constexpr (EMode == ExceptionMode::Throw) {
             if (_idx != Idx) [[unlikely]] {
@@ -165,7 +167,7 @@ struct UninitializedNonVoidVariant {
     }
 
     template <std::size_t Idx, ExceptionMode EMode = ExceptionMode::Throw>
-        requires (Idx <= N)
+        requires (Idx < N)
     constexpr auto&& get() && noexcept(EMode == ExceptionMode::Nothrow) {
         if constexpr (EMode == ExceptionMode::Throw) {
             if (_idx != Idx) [[unlikely]] {
@@ -177,13 +179,36 @@ struct UninitializedNonVoidVariant {
         );
     }
 
+    /**
+     * @brief 获取类型为 T 的变量; 如果多个类型, 仅会提取最靠前的那个
+     * @tparam T 
+     */
+    template <typename T, ExceptionMode EMode = ExceptionMode::Throw>
+        requires (UninitializedNonVoidVariantIndexVal<T, UninitializedNonVoidVariant> < N)
+    constexpr auto& get() & noexcept(EMode == ExceptionMode::Nothrow) {
+        constexpr std::size_t Idx = UninitializedNonVoidVariantIndexVal<T, UninitializedNonVoidVariant>;
+        return get<Idx, EMode>();
+    }
+
+    template <typename T, ExceptionMode EMode = ExceptionMode::Throw>
+        requires (UninitializedNonVoidVariantIndexVal<T, UninitializedNonVoidVariant> < N)
+    constexpr auto&& get() && noexcept(EMode == ExceptionMode::Nothrow) {
+        constexpr std::size_t Idx = UninitializedNonVoidVariantIndexVal<T, UninitializedNonVoidVariant>;
+        return std::move(std::move(*this).template get<Idx, EMode>());
+    }
+
     template <typename T, typename... Args>
     T& emplace(Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args...>) {
         del(std::make_index_sequence<N>{});
         constexpr std::size_t Idx = UninitializedNonVoidVariantIndexVal<T, UninitializedNonVoidVariant>;
         _idx = Idx;
-        new (std::addressof(_data)) T(std::forward<Args>(args)...);
+        new (std::addressof(get<Idx, ExceptionMode::Nothrow>())) T(std::forward<Args>(args)...);
         return get<Idx, ExceptionMode::Nothrow>();
+    }
+
+    void reset() noexcept {
+        del(std::make_index_sequence<N>{});
+        _idx = UninitializedNonVoidVariantNpos;
     }
     
     ~UninitializedNonVoidVariant() noexcept {
@@ -213,14 +238,26 @@ template <std::size_t Idx, typename... Ts,
     ExceptionMode EMode = ExceptionMode::Throw,
     typename = std::enable_if_t<(Idx <= UninitializedNonVoidVariant<Ts...>::N)>>
 auto& get(UninitializedNonVoidVariant<Ts...>& v) noexcept(EMode == ExceptionMode::Nothrow) {
-    return v.template get<Idx>();
+    return v.template get<Idx, EMode>();
 }
 
 template <std::size_t Idx, typename... Ts, 
     ExceptionMode EMode = ExceptionMode::Throw,
     typename = std::enable_if_t<(Idx <= UninitializedNonVoidVariant<Ts...>::N)>>
 auto&& get(UninitializedNonVoidVariant<Ts...>&& v) noexcept(EMode == ExceptionMode::Nothrow) {
-    return std::move(std::move(v).template get<Idx>());
+    return std::move(std::move(v).template get<Idx, EMode>());
+}
+
+template <typename T, typename... Ts,
+    ExceptionMode EMode = ExceptionMode::Throw>
+auto& get(UninitializedNonVoidVariant<Ts...>& v) noexcept(EMode == ExceptionMode::Nothrow) {
+    return v.template get<T, EMode>();
+}
+
+template <typename T, typename... Ts,
+    ExceptionMode EMode = ExceptionMode::Throw>
+auto&& get(UninitializedNonVoidVariant<Ts...>&& v) noexcept(EMode == ExceptionMode::Nothrow) {
+    return std::move(std::move(v).template get<T, EMode>());
 }
 
 } // namespace HX
