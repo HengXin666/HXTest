@@ -46,9 +46,11 @@ struct WhenAnyPromise {
     auto get_return_object() noexcept {
         return std::coroutine_handle<WhenAnyPromise>::from_promise(*this);
     }
-    HX::PreviousAwaiter final_suspend() noexcept { return {_mainCoroutine}; }
+    HX::PreviousAwaiter final_suspend() noexcept {
+        return {_mainCoroutine}; // 3) WhenAny 的核心, 协程终止时候, 都执行这个; 然后回到 whenAny 中!
+    }
     void return_value(std::coroutine_handle<> previous) noexcept {
-        _mainCoroutine = previous;
+        _mainCoroutine = previous; // 2) 实际上就是 ctlBlock.previous; 即 whenAny 协程句柄
     }
     void unhandled_exception() noexcept {
         std::terminate();
@@ -59,11 +61,11 @@ struct WhenAnyPromise {
 struct WhenAnyAwaiter {
     constexpr bool await_ready() const noexcept { return false; }
     constexpr auto await_suspend(std::coroutine_handle<> coroutine) const noexcept {
-        ctlBlock.previous = coroutine;
+        ctlBlock.previous = coroutine; // 1) 此处记录了 whenAny 协程句柄
         for (const auto& co : cos.subspan(0, cos.size() - 1)) {
             auto coH = static_cast<std::coroutine_handle<>>(co);
             coH.resume();
-            if (coH.done()) {
+            if (coH.done()) [[unlikely]] { // 存在调用者会这样调用, 但是显然不是期望的使用方式
                 return coroutine;
             }
         }
@@ -86,8 +88,6 @@ Task<std::coroutine_handle<>, WhenAnyPromise> start(
     }
     co_return ctlBlock.previous;
 }
-
-// UninitializedNonVoidVariant
 
 template <
     std::size_t... Idx, 

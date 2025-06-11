@@ -59,6 +59,9 @@ template <std::size_t Idx, typename T, typename... Ts>
 struct UninitializedNonVoidVariantImpl<Idx, T, Ts...> {
     using UVariant = UninitializedNonVoidVariantImpl;
 
+    UninitializedNonVoidVariantImpl() noexcept {}
+    ~UninitializedNonVoidVariantImpl() noexcept {}
+
     union {
         UninitializedNonVoidVariantHead<Idx, T> _head;
         UninitializedNonVoidVariantImpl<Idx + 1, Ts...> _body;
@@ -98,6 +101,13 @@ template <typename... Ts>
 struct UninitializedNonVoidVariant {
     inline static constexpr std::size_t N = sizeof...(Ts);
 
+    explicit UninitializedNonVoidVariant() noexcept
+        : _idx{UninitializedNonVoidVariantNpos}
+        , _data()
+    {}
+
+    
+
     std::size_t index() const noexcept {
         return _idx;
     }
@@ -125,9 +135,24 @@ struct UninitializedNonVoidVariant {
     //     return _data;
     // }
     
+    ~UninitializedNonVoidVariant() noexcept {
+        if (_idx != UninitializedNonVoidVariantNpos) {
+            del(std::make_index_sequence<N>{});
+        }
+    }
+
 private:
+    template <std::size_t... Idx>
+    void del(std::index_sequence<Idx...>) noexcept {
+        using DelFuncPtr = void (*)(UninitializedNonVoidVariant& u);
+        static DelFuncPtr delFuncs[N] {
+            [](UninitializedNonVoidVariant& u){ u.get<Idx>().~Ts(); }...
+        };
+        delFuncs[_idx](*this);
+    }
+
+    std::size_t _idx;
     internal::UninitializedNonVoidVariantImpl<0, Ts...> _data;
-    std::size_t _idx{UninitializedNonVoidVariantNpos};
 };
 
 template <std::size_t Idx, typename... Ts,

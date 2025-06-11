@@ -4,21 +4,21 @@
  * @brief 本篇毫无营养, 请不要对号入座!
  */
 
-struct A {
-    explicit A() {
+struct Awa {
+    explicit Awa() {
         HX::print::println("A构造");
     }
 
-    explicit A(int) {
+    explicit Awa(int) {
         throw std::runtime_error{""};
     }
 
-    ~A() noexcept {
+    ~Awa() noexcept {
         HX::print::println("~A()");
     }
 };
 
-void fun(A*, A*) {
+void fun(Awa*, Awa*) {
 }
 
 int main() {
@@ -30,7 +30,7 @@ int main() {
         // 下面是它举例的:
         // A 成功构造, 而 B 构造抛出了异常, 说不会析构A
         // 下面是示例代码 
-        fun(new A(), new A(int{}));
+        fun(new Awa(), new Awa(int{}));
     } catch (...) {
         // 评价: 你的指针会无缘无故析构对吗?
         // 再者: C++说了不要在构造和析构中使用异常, 你以为你写C++98的就是985的啊
@@ -39,8 +39,8 @@ int main() {
     // 修改: 使用RAII
     HX::print::println("\n修改后:");
     try {
-        A a1{};
-        A a2{int{}};
+        Awa a1{};
+        Awa a2{int{}};
         fun(&a1, &a2);
     } catch (...) {
         // 懒得喷

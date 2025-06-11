@@ -20,11 +20,11 @@ void fun4() throw() {
 
 }
 
-struct A {
-    A(int) {} // 默认为 noexcept(false)
+struct Awa {
+    Awa(int) {} // 默认为 noexcept(false)
     void fun() {}
     void funNE() noexcept {}
-    ~A() {} // 默认为 noexcept
+    ~Awa() {} // 默认为 noexcept
 };
 
 struct B {
@@ -57,10 +57,10 @@ int main() {
         HX::print::println("有异常!");
     }
     HX::print::println("A (默认的情况):");
-    HX::print::println("noexcept(A{int}) = ", noexcept(A{0}));
-    HX::print::println("noexcept(std::declval<A>().fun()) = ", noexcept(std::declval<A>().fun()));
-    HX::print::println("noexcept(std::declval<A>().funNE()) = ", noexcept(std::declval<A>().funNE()));
-    HX::print::println("noexcept(std::declval<A>().~A()) = ", noexcept(std::declval<A>().~A()));
+    HX::print::println("noexcept(A{int}) = ", noexcept(Awa{0}));
+    HX::print::println("noexcept(std::declval<A>().fun()) = ", noexcept(std::declval<Awa>().fun()));
+    HX::print::println("noexcept(std::declval<A>().funNE()) = ", noexcept(std::declval<Awa>().funNE()));
+    HX::print::println("noexcept(std::declval<A>().~A()) = ", noexcept(std::declval<Awa>().~Awa()));
     
     HX::print::println("");
     HX::print::println("B (自定义的情况):");
@@ -80,7 +80,7 @@ int main() {
     HX::print::println("");
     HX::print::println("编译期表达式求 noexcept:");
     HX::print::println("funTemplate<int>: ", noexcept(funTemplate<int>()));
-    HX::print::println("funTemplate<A>: ", noexcept(funTemplate<A>()));
+    HX::print::println("funTemplate<A>: ", noexcept(funTemplate<Awa>()));
 
     // lambda 也可以声明为 noexcept
     auto lambda_noexcept_true = []() noexcept(true) {};
