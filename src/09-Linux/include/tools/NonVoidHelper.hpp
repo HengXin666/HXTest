@@ -31,7 +31,15 @@ template <>
 struct NonVoidHelper<void> {
     using Type = NonVoidHelper;
 
-    explicit NonVoidHelper() noexcept = default;
+    constexpr explicit NonVoidHelper() noexcept = default;
+
+#if 0
+    constexpr NonVoidHelper(NonVoidHelper const&) noexcept = default;
+    constexpr NonVoidHelper(NonVoidHelper&&) noexcept = default;
+
+    constexpr NonVoidHelper& operator=(NonVoidHelper const&) noexcept = default;
+    constexpr NonVoidHelper& operator=(NonVoidHelper&&) noexcept = default;
+#endif
 };
 
 template <typename T>
