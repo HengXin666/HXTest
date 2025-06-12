@@ -45,6 +45,11 @@ static void stdTest() {
         qwq = "awa";
         // orz = qwq;
         // qwq = std::vector<int>{};
+
+        // std::visit([](auto&&){
+        //     return []{};
+        // }, awa);
+
         print::println("get<int>: ", get<2>(awa));
         print::println("get<int>: ", get<int>(awa));
     } catch (...) {
@@ -64,9 +69,15 @@ static void hxTest() {
         // qwq = "awa";
         // qwq = std::vector<int>{};
         
-        visit(awa, [](auto&& v) -> void {
+        using LBD = decltype([]{});
+
+        static_assert(std::is_same_v<LBD, LBD>, "qwq");
+
+        visit(awa, [](auto&& v) {
             print::println("v: ", v);
-            return {};
+            return [&]{
+                print::println("哥们直呼内行!");
+            };
         });
 
         print::println("get<int>: ", get<2>(awa));

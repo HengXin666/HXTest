@@ -24,6 +24,7 @@
 #include <memory>
 
 #include <tools/NonVoidHelper.hpp>
+#include <tools/Uninitialized.hpp>
 #include <tools/ExceptionMode.hpp>
 
 namespace HX {
@@ -158,6 +159,11 @@ struct UninitializedNonVoidVariantIndexToType<Idx, UninitializedNonVoidVariant<T
 
     using Type = IndexToType<T, Ts...>::Type;
 };
+
+template <std::size_t Idx, typename Lambda, typename... Ts>
+constexpr decltype(auto) visitHelper(UninitializedNonVoidVariant<Ts...>& uv, Lambda& lambda) noexcept {
+    return lambda(uv.template get<Idx, ExceptionMode::Nothrow>());
+}
 
 } // namespace internal
 
@@ -397,7 +403,7 @@ private:
     template <std::size_t... Idx>
     void del(std::index_sequence<Idx...>) noexcept {
         using DelFuncPtr = void (*)(UninitializedNonVoidVariant&);
-        static DelFuncPtr delFuncs[N] {
+        static constexpr DelFuncPtr delFuncs[N] {
             [](UninitializedNonVoidVariant& u){ u.get<Idx, ExceptionMode::Nothrow>().~NonVoidType<Ts>(); }...
         };
         if (_idx != UninitializedNonVoidVariantNpos) {
@@ -452,11 +458,31 @@ constexpr auto&& get(UninitializedNonVoidVariant<Ts...>&& v) noexcept(EMode == E
     return std::move(std::move(v).template get<T, EMode>());
 }
 
+namespace internal {
+
+template <typename Lambda, typename Func>
+struct LambdaAndFunc {
+
+    LambdaAndFunc(Lambda const& _l, Func const& _f)
+        : lambda(_l)
+        , func(_f)
+    {}
+
+    Lambda const& lambda;
+    Func const& func;
+};
+
+} // namespace internal
+
 template <typename Lambda, typename... Ts, 
     typename Res = decltype(std::declval<Lambda>()(
         get<0>(std::declval<UninitializedNonVoidVariant<Ts...>>())))>
 constexpr Res visit(UninitializedNonVoidVariant<Ts...>& uv, Lambda&& lambda) {
+    if (uv.index() == UninitializedNonVoidVariantNpos) [[unlikely]] {
+        throw std::runtime_error("get: wrong index for variant");
+    }
     if constexpr (std::is_void_v<Res>) {
+        // void 返回值
         auto fun = [&] <std::size_t Idx> (std::index_sequence<Idx>) {
             lambda(uv.template get<Idx, ExceptionMode::Nothrow>());
             return true;
@@ -465,16 +491,43 @@ constexpr Res visit(UninitializedNonVoidVariant<Ts...>& uv, Lambda&& lambda) {
             ((uv.index() == Idx && fun(std::index_sequence<Idx>{})) || ...);
         }(std::make_index_sequence<sizeof...(Ts)>{});
         return;
-    } else {
-        Res res;
+    } else if constexpr (requires {
+        new (nullptr) Res(std::forward(std::declval<Res&&>()));
+    }) {
+        // 返回 带参数的, 支持移动 or 拷贝构造
+        Uninitialized<Res> res;
         auto fun = [&] <std::size_t Idx> (std::index_sequence<Idx>) {
-            res = lambda(uv.template get<Idx, ExceptionMode::Nothrow>());
+            res.set(lambda(uv.template get<Idx, ExceptionMode::Nothrow>()));
             return true;
         };
         [&] <std::size_t... Idx>(std::index_sequence<Idx...>) {
             ((uv.index() == Idx && fun(std::index_sequence<Idx>{})) || ...);
         }(std::make_index_sequence<sizeof...(Ts)>{});
-        return res;
+        return res.move();
+    } else {
+        // 返回 如 Lambda 这类 不支持 移动 or 拷贝构造的
+        // 您可以使用 std::function 来返回 ...
+
+#if 1   // 原因见: src/06-std-analyse/test/08-Lambda/01_Lambda.cpp
+        static_assert(sizeof...(Ts) < 0, 
+            "visit requires the visitor to have the same "
+            "return type for all alternatives of a variant");
+#else
+        return [&] <std::size_t... Idx>(std::index_sequence<Idx...>) -> Res {
+            using FuncPtr = Res (*)(UninitializedNonVoidVariant<Ts...>&, Lambda&);
+            static FuncPtr table[] = {
+                [] (UninitializedNonVoidVariant<Ts...>& uv, Lambda& ld) -> Res {
+                    if constexpr () {
+                        return ld(uv.template get<Idx, ExceptionMode::Nothrow>());
+                    } else {
+                        // [[unlikely]]
+                        return std::declval<Res>();
+                    }
+                }...
+            };
+            return table[uv.index()](uv, lambda);
+        }(std::make_index_sequence<sizeof...(Ts)>{});
+#endif
     }
 }
 
