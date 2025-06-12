@@ -54,7 +54,7 @@ static void stdTest() {
 
 static void hxTest() {
     try {
-        UninitializedNonVoidVariant<int, Awa, std::string, void> awa{}, qwq;
+        UninitializedNonVoidVariant<int, Awa, std::string> awa{}, qwq;
         Awa _{};
         awa = std::move(_);
         awa.emplace<std::string>("qwq");
@@ -64,6 +64,11 @@ static void hxTest() {
         // qwq = "awa";
         // qwq = std::vector<int>{};
         
+        visit(awa, [](auto&& v) -> void {
+            print::println("v: ", v);
+            return {};
+        });
+
         print::println("get<int>: ", get<2>(awa));
         print::println("get<int>: ", get<int>(awa));
     } catch (...) {
@@ -71,7 +76,7 @@ static void hxTest() {
     }
 }
 
-#if 1
+#if 0
 
 // 等价于 c++11 std::conditional
 
