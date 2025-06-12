@@ -194,9 +194,17 @@ struct UninitializedNonVoidVariant {
     {}
 
     template <typename T>
+        // requires (std::is_constructible_v<NonVoidHelper<T>, NonVoidHelper<Ts>...>) // @todo
     explicit UninitializedNonVoidVariant(T&& t) noexcept(std::is_nothrow_constructible_v<T, T&&>)
         : _idx{UninitializedNonVoidVariantIndexVal<T, UninitializedNonVoidVariant>}
     {
+        /*
+    核心思路: 判断 T 可以构造为 Ts..., 并且只能匹配成功一个
+        1) 编译期处理: T 可以构造为 Ts... 则是 true, 放到一个数组中
+        2) 一个编译期函数: for 看 是否出现 多个 true (如果是, 则不行)
+        3) 同时函数返回对应的索引 (不合法就返回 sizeof...(Ts))
+        4) 持有索引就可以找到准确的类型 U, 然后 T 构造为 U 了
+        */
         constexpr std::size_t Idx = UninitializedNonVoidVariantIndexVal<T, UninitializedNonVoidVariant>;
         new (std::addressof(get<Idx, ExceptionMode::Nothrow>())) T(std::forward<T>(t));
     }
@@ -457,22 +465,6 @@ template <typename T, typename... Ts,
 constexpr auto&& get(UninitializedNonVoidVariant<Ts...>&& v) noexcept(EMode == ExceptionMode::Nothrow) {
     return std::move(std::move(v).template get<T, EMode>());
 }
-
-namespace internal {
-
-template <typename Lambda, typename Func>
-struct LambdaAndFunc {
-
-    LambdaAndFunc(Lambda const& _l, Func const& _f)
-        : lambda(_l)
-        , func(_f)
-    {}
-
-    Lambda const& lambda;
-    Func const& func;
-};
-
-} // namespace internal
 
 template <typename Lambda, typename... Ts, 
     typename Res = decltype(std::declval<Lambda>()(

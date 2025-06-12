@@ -75,9 +75,6 @@ static void hxTest() {
 
         visit(awa, [](auto&& v) {
             print::println("v: ", v);
-            return [&]{
-                print::println("哥们直呼内行!");
-            };
         });
 
         print::println("get<int>: ", get<2>(awa));
