@@ -37,7 +37,7 @@ struct Uninitialized {
     }
 
     template <typename... Ts>
-    void set(Ts&&... args) noexcept {
+    void set(Ts&&... args) {
         new (std::addressof(_data)) T(std::forward<Ts>(args)...);
     }
 private:
