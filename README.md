@@ -51,6 +51,8 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
             - [实验代码](src/06-std-analyse/test/07-TypeExtraction/01_type_extraction.cpp) (实现了 `is_void_v`/`remove_reference_t`/`is_same_v`)
         - 08-Lambda
             - [实验代码](src/06-std-analyse/test/08-Lambda/01_Lambda.cpp) (`auto&&` 做参数的 Lambda, 其实例化后, 类型也是不同的!(相当于延迟实例化了), 因此即便使用模板传参, 模板也一直模板...)
+        - 09-auto
+            - [对于auto返回值的讨论](src/06-std-analyse/test/09-auto/01_auto_return.cpp) 讨论了 `auto`、`auto&`、`auto&&`、`decltype(auto)` 在各种常见情况下作为函数返回值时候的效果, 对比其不同.
 7. QT
    - 01-QML [QML-目录](./src/07-qt/01-qml/) | 笔记: [现代C++QT-QML](https://hengxin666.github.io/HXLoLi/docs/%E7%A8%8B%E5%BA%8F%E8%AF%AD%E8%A8%80/C++/%E7%8E%B0%E4%BB%A3C++/%E7%8E%B0%E4%BB%A3C++QT/QML/Window%E4%BB%8B%E7%BB%8D%E4%B8%B6%E5%88%9D%E8%AF%86)
 
