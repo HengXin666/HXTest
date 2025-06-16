@@ -10,6 +10,18 @@
 #include <condition_variable>
 #include <atomic>
 
+namespace {
+
+struct A {
+    // A& operator=(A&&) = delete;
+
+    ~A() noexcept {
+        HX::print::println("~A");
+    }
+};
+
+}
+
 /**
  * @brief 线程安全的队列
  * @tparam T 
@@ -62,26 +74,73 @@ private:
 };
 
 template <typename T>
-struct Result {
-    using FutureResult = HX::NonVoidType<T>;
+class Result {
+    struct _Result {
+        _Result()
+            : _data{}
+            , _exception{}
+            , _mtx{}
+        {
+            _mtx.lock();
+        }
 
-    Result() {}
+        _Result& operator=(_Result&&) = delete;
 
-    Result& operator=(Result&&) = default;
-    Result(Result&&) = default;
+        void wait() {
+            std::unique_lock _{_mtx};
+        }
+
+        void ready() {
+            _mtx.unlock();
+        }
+
+        HX::NonVoidType<T> data() {
+            if (_exception) [[unlikely]] {
+                std::rethrow_exception(_exception);
+            }
+            return std::move(_data);
+        }
+
+        void setData(HX::NonVoidType<T>&& data) {
+            new (std::addressof(_data)) HX::NonVoidType<T>(std::forward<HX::NonVoidType<T>>(data));
+            ready();
+        }
+
+        void unhandledException() noexcept {
+            _exception = std::current_exception();
+            ready();
+        }
+    private:
+        HX::NonVoidType<T> _data;
+        std::exception_ptr _exception;
+        std::mutex _mtx;
+    };
+public:
+    using FutureResult = _Result;
+
+    Result()
+        : _res{std::make_shared<FutureResult>()}
+    {}
 
     Result(Result const&) = delete;
+    Result(Result&&) = default;
     Result& operator=(Result const&) = delete;
+    Result& operator=(Result&&) = default;
 
-    FutureResult get() noexcept {
-        return _res;
+    HX::NonVoidType<T> get() {
+        wait();
+        return _res->data();
     }
 
     FutureResult& getFutureResult() noexcept {
-        return _res;
+        return *_res;
+    }
+
+    void wait() {
+        _res->wait();
     }
 private:
-    FutureResult _res;
+    std::shared_ptr<FutureResult> _res;
 };
 
 /**
@@ -146,14 +205,22 @@ struct ThreadPool {
     template <typename Func, typename... Args, typename Res = std::invoke_result_t<Func, Args...>>
     Result<Res> addTask(Func&& func, Args&&... args) {
         Result<Res> res;
-        auto& ans = res.getFutureResult();
-        _taskQueue.emplace([&, func = std::move(func)] {
-            if constexpr (std::is_void_v<Res>) {
-                static_cast<void>(ans);
-                func(std::forward<Args>(args)...);
-            } else {
-                ans.set(func(std::forward<Args>(args)...));
+        _taskQueue.emplace([&, func = std::move(func), 
+                            &ans = res.getFutureResult()] {
+            try {
+                if constexpr (std::is_void_v<Res>) {
+                    static_cast<void>(ans);
+                    func(std::forward<Args>(args)...);
+                } else {
+                    ans.setData(func(std::forward<Args>(args)...));
+                }
+            } catch (...) {
+                ans.unhandledException();
             }
+            // @todo 可能的问题:
+            // 如果 Result<Res> 在外部被析构, 那么内部如果还没有执行完, 那么 ans 就是
+            // 悬挂引用, 这样就会出现异常...?
+            // 所以 Result<Res> 内部使用 共享智能指针 就比较安全
         });
         _cv.notify_one();
         return res;
@@ -161,8 +228,14 @@ struct ThreadPool {
 
     /**
      * @brief 启动线程池
+     * @tparam Md 运行模式 (默认为新建一个管理者线程 (异步))
+     * @tparam Strategy 评判是否增删线程的方法 (返回值为 int(表示增删的线程数量), 传参为`ThreadPoolData const&`)
+     * @param checkTimer 管理者轮询线程的时间间隔
+     * @param strategy 是否增删线程的回调函数
      */
-    template <Model Md = Model::Asynchronous, typename Strategy>
+    template <Model Md = Model::Asynchronous, typename Strategy,
+        typename = std::enable_if_t<
+            std::is_same_v<decltype(std::declval<Strategy>()(std::declval<ThreadPoolData const&>())), int>>>
     void run(std::chrono::milliseconds checkTimer, Strategy strategy) {
         _isRun = true;
         if constexpr (Md == Model::Asynchronous) {
@@ -180,9 +253,8 @@ struct ThreadPool {
 
     ~ThreadPool() noexcept {
         _isRun = false;
-        HX::print::println("ThreadPool End~");
-        _opThread.join();
         _cv.notify_all();
+        _opThread.join();
         for (const auto& [_, t] : _workers) {
             t->join();
         }
@@ -206,13 +278,14 @@ private:
             HX::print::println("check~");
             auto taskSize = static_cast<uint32_t>(_taskQueue.size());
             auto runCnt = _runCnt.load();
+            auto workerSize = static_cast<uint32_t>(_workers.size());
             if (int add = strategy(ThreadPoolData{
                 _minThreadNum,
                 _maxThreadNum,
                 taskSize,
-                static_cast<uint32_t>(_workers.size()),
+                workerSize,
                 runCnt,
-                taskSize - runCnt
+                workerSize - runCnt
             })) {
                 if (add > 0) {
                     makeWorker(static_cast<std::size_t>(add));
@@ -238,10 +311,7 @@ private:
     void makeWorker(std::size_t num) {
         for (std::size_t i = 0; i < num; ++i) {
             auto up = std::make_unique<std::thread>([this] {
-                HX::print::print("启动: ");
-                std::cout << std::this_thread::get_id() << '\n';
                 while (true) {
-                    HX::print::println("我先睡了~");
                     {
                         // 挂起, 并等待任务
                         std::unique_lock lck{_mtx};
@@ -257,13 +327,8 @@ private:
                         break;
                     }
                     ++_runCnt;
-                    HX::print::println("上班~");
                     auto task = _taskQueue.frontAndPop();
-                    try {
-                        task(); // 执行任务
-                    } catch (...) {
-                        ;
-                    }
+                    task(); // 执行任务
                     --_runCnt;
                 }
             });
@@ -279,6 +344,9 @@ private:
         while (!_delIdQueue.empty()) {
             auto id = _delIdQueue.frontAndPop();
             auto it = _workers.find(id);
+            if (it == _workers.end()) [[unlikely]] {
+                throw std::runtime_error{"iterator failure"};
+            }
             it->second->join();
             _workers.erase(it);
         }
@@ -340,19 +408,27 @@ int main() {
     using namespace std::chrono;
     ThreadPool tp;
     tp.run(std::chrono::milliseconds {1000}, ThreadPoolDefaultStrategy);
-    tp.addTask([]{
+    auto res = tp.addTask([]{
         for (int i = 0; i < 10; ++i) {
             HX::print::println("i = ", i);
-            std::this_thread::sleep_for(1s);
+            std::this_thread::sleep_for(100ms);
         }
+        throw std::runtime_error{"test Error!"};
+        return 114514;
     });
-    tp.addTask([]{
-        for (int j = 0; j < 5; ++j) {
-            HX::print::println("j = ", j);
-            std::this_thread::sleep_for(1s);
-        }
-    });
-    std::this_thread::sleep_for(3s);
-    HX::print::println("End~");
+    {
+        auto _ =tp.addTask([]{
+            for (int i = 0; i < 10; ++i) {
+                HX::print::println("j = ", i);
+                std::this_thread::sleep_for(100ms);
+            }
+            return A{};
+        });
+    }
+    try {
+        HX::print::println("End~ ", res.get());
+    } catch (std::exception& e) {
+        HX::print::println("Error: ", e.what());
+    }
     return 0;
 }
