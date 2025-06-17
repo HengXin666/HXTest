@@ -48,7 +48,7 @@ struct SafeQueue {
 
     T frontAndPop() {
         std::unique_lock _{_mtx};
-        auto&& res = std::move(_queue.front());
+        T res = std::move(_queue.front());
         _queue.pop();
         return res;
     }
@@ -76,33 +76,49 @@ private:
 template <typename T>
 class Result {
     struct _Result {
+        using __DataType = HX::NonVoidType<T>;
+
         _Result()
             : _data{}
             , _exception{}
             , _mtx{}
-        {
-            _mtx.lock();
+            , _cv{}
+            , _isResed(false)
+        {}
+
+        ~_Result() noexcept {
+            if (_isResed && !_exception) {
+                _data.~__DataType();
+            }
         }
 
+        _Result(_Result&&) = delete;
+        _Result(const _Result&) = delete;
+        _Result& operator=(const _Result&) = delete;
         _Result& operator=(_Result&&) = delete;
 
         void wait() {
-            std::unique_lock _{_mtx};
+            std::unique_lock lck{_mtx};
+            _cv.wait(lck, [this] { return _isResed; });
         }
 
         void ready() {
-            _mtx.unlock();
+            {
+                std::lock_guard _{_mtx};
+                _isResed = true;
+            }
+            _cv.notify_all();
         }
 
-        HX::NonVoidType<T> data() {
+        __DataType data() {
             if (_exception) [[unlikely]] {
                 std::rethrow_exception(_exception);
             }
             return std::move(_data);
         }
 
-        void setData(HX::NonVoidType<T>&& data) {
-            new (std::addressof(_data)) HX::NonVoidType<T>(std::forward<HX::NonVoidType<T>>(data));
+        void setData(__DataType&& data) {
+            new (std::addressof(_data)) __DataType(std::move(data));
             ready();
         }
 
@@ -111,9 +127,11 @@ class Result {
             ready();
         }
     private:
-        HX::NonVoidType<T> _data;
+        __DataType _data;
         std::exception_ptr _exception;
         std::mutex _mtx;
+        std::condition_variable _cv;
+        bool _isResed;
     };
 public:
     using FutureResult = _Result;
@@ -132,8 +150,8 @@ public:
         return _res->data();
     }
 
-    FutureResult& getFutureResult() noexcept {
-        return *_res;
+    std::shared_ptr<FutureResult> getFutureResult() noexcept {
+        return _res;
     }
 
     void wait() {
@@ -206,16 +224,16 @@ struct ThreadPool {
     Result<Res> addTask(Func&& func, Args&&... args) {
         Result<Res> res;
         _taskQueue.emplace([&, func = std::move(func), 
-                            &ans = res.getFutureResult()] {
+                            ans = res.getFutureResult()] {
             try {
                 if constexpr (std::is_void_v<Res>) {
                     static_cast<void>(ans);
                     func(std::forward<Args>(args)...);
                 } else {
-                    ans.setData(func(std::forward<Args>(args)...));
+                    ans->setData(func(std::forward<Args>(args)...));
                 }
             } catch (...) {
-                ans.unhandledException();
+                ans->unhandledException();
             }
             // @todo 可能的问题:
             // 如果 Result<Res> 在外部被析构, 那么内部如果还没有执行完, 那么 ans 就是
@@ -253,8 +271,8 @@ struct ThreadPool {
 
     ~ThreadPool() noexcept {
         _isRun = false;
-        _cv.notify_all();
         _opThread.join();
+        _cv.notify_all();
         for (const auto& [_, t] : _workers) {
             t->join();
         }
@@ -292,7 +310,7 @@ private:
                 } else {
                     add = -add;
                     _delCnt = static_cast<uint32_t>(add);
-                    for (int i = 0; i < add; --i) {
+                    for (int i = 0; i < add; ++i) {
                         _cv.notify_one();
                     }
                 }
@@ -311,23 +329,24 @@ private:
     void makeWorker(std::size_t num) {
         for (std::size_t i = 0; i < num; ++i) {
             auto up = std::make_unique<std::thread>([this] {
-                while (true) {
+                std::function<void()> task;
+                while (_isRun) [[likely]] {
                     {
                         // 挂起, 并等待任务
                         std::unique_lock lck{_mtx};
                         _cv.wait(lck, [&] {
-                            return !_taskQueue.empty() || !_isRun || _delCnt > 0;
+                            return !_taskQueue.empty() || _delCnt > 0 || !_isRun;
                         });
-                    }
-                    if (!_isRun) [[unlikely]] {
-                        break;
-                    }
-                    if (tryDecrementIfPositive(_delCnt)) {
-                        _delIdQueue.emplace(std::this_thread::get_id());
-                        break;
+                        if (!_isRun) [[unlikely]] {
+                            break;
+                        }
+                        if (tryDecrementIfPositive(_delCnt)) {
+                            _delIdQueue.emplace(std::this_thread::get_id());
+                            break;
+                        }
+                        task = _taskQueue.frontAndPop();
                     }
                     ++_runCnt;
-                    auto task = _taskQueue.frontAndPop();
                     task(); // 执行任务
                     --_runCnt;
                 }
@@ -417,7 +436,7 @@ int main() {
         return 114514;
     });
     {
-        auto _ =tp.addTask([]{
+        tp.addTask([]{
             for (int i = 0; i < 10; ++i) {
                 HX::print::println("j = ", i);
                 std::this_thread::sleep_for(100ms);

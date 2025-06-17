@@ -1,4 +1,4 @@
-project(09-Linux LANGUAGES CXX)
+project(09-OS LANGUAGES CXX)
 
 file(GLOB_RECURSE TEST_FILES CONFIGURE_DEPENDS 
     ./demo/*.cpp
@@ -30,16 +30,16 @@ foreach(TEST_FILE ${TEST_FILES})
     # 添加测试可执行文件
     add_executable(${TEST_NAME} ${TEST_FILE})
 
-    # 示例: 添加std线程依赖
-    # find_package(Threads REQUIRED)
-    # target_link_libraries(${TEST_NAME} Threads::Threads)
+    # 添加std线程依赖
+    find_package(Threads REQUIRED)
+    target_link_libraries(${TEST_NAME} Threads::Threads)
 
     # 添加 liburing
     target_include_directories(${TEST_NAME} PRIVATE ${LIBURING_INCLUDE_DIRS})
     target_link_libraries(${TEST_NAME} PRIVATE ${LIBURING_LIBRARIES})
 
     # 设置 FOLDER 属性, 使其按所在 demo 子目录分类
-    set_target_properties(${TEST_NAME} PROPERTIES FOLDER 09-Linux/${PARENT_DIR})
+    set_target_properties(${TEST_NAME} PROPERTIES FOLDER 09-OS/${PARENT_DIR})
 
     # 使用 Address Sanitizer
     if(HX_DEBUG_BY_ADDRESS_SANITIZER)

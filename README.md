@@ -66,8 +66,8 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
 
 9. Linux
     - 01-io_uring
-        - [基于协程的io_uring简易框架(目前是一个 **带超时** 的 `cin` 示例)](./src/09-Linux/demo/01-io_uring/02_io_uring_co.cpp)
-            - [WhenAny 协程](src/09-Linux/include/coroutine/awaiter/WhenAny.hpp)
-            - [UninitializedNonVoidVariant (擦除`void`类型的类型可重复的共用体)](src/09-Linux/include/tools/UninitializedNonVoidVariant.hpp) (也算的 `06` 的内容...) `// @todo 支持从可构造的进行构造, 而不是一定要类型一样 (std::string <- const char *)`
+        - [基于协程的io_uring简易框架(目前是一个 **带超时** 的 `cin` 示例)](./src/09-os/demo/01-io_uring/02_io_uring_co.cpp)
+            - [WhenAny 协程](src/09-os/include/coroutine/awaiter/WhenAny.hpp)
+            - [UninitializedNonVoidVariant (擦除`void`类型的类型可重复的共用体)](src/09-os/include/tools/UninitializedNonVoidVariant.hpp) (也算的 `06` 的内容...) `// @todo 支持从可构造的进行构造, 而不是一定要类型一样 (std::string <- const char *)`
     - 02-thread
-        - [线程池](src/09-Linux/demo/02-thread/01_cpp_threadPool.cpp) 一个现代的线程池, 支持动态扩容和返回值
+        - [线程池](src/09-os/demo/02-thread/01_cpp_threadPool.cpp) 一个现代的线程池, 支持动态扩容和返回值
