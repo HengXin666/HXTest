@@ -4,6 +4,8 @@ file(GLOB_RECURSE TEST_FILES CONFIGURE_DEPENDS
     ./demo/*.cpp
 )
 
+find_package(Threads REQUIRED)
+
 if(NOT WIN32)
     # set(HX_DEBUG_BY_ADDRESS_SANITIZER TRUE)
 
@@ -31,13 +33,17 @@ foreach(TEST_FILE ${TEST_FILES})
     add_executable(${TEST_NAME} ${TEST_FILE})
 
     # 添加std线程依赖
-    find_package(Threads REQUIRED)
-    target_link_libraries(${TEST_NAME} Threads::Threads)
+    target_link_libraries(${TEST_NAME} PRIVATE Threads::Threads)
 
     # 添加 liburing
     target_include_directories(${TEST_NAME} PRIVATE ${LIBURING_INCLUDE_DIRS})
     target_link_libraries(${TEST_NAME} PRIVATE ${LIBURING_LIBRARIES})
 
+    # 链接 win32
+    if(WIN32)
+        target_link_libraries(${TEST_NAME} PRIVATE ws2_32)
+    endif()
+    
     # 设置 FOLDER 属性, 使其按所在 demo 子目录分类
     set_target_properties(${TEST_NAME} PROPERTIES FOLDER 09-OS/${PARENT_DIR})
 

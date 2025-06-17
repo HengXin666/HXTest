@@ -64,10 +64,12 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
         - [02-使用三角形绘制圆](src/08-OpenGL/demo/01-opengl-v200/02_opengl_yuan.cpp)
         - [03-回家作业:使用OpenGL绘制OpenCV的Logo](src/08-OpenGL/demo/01-opengl-v200/03_opengl_hw01.cpp) & [带动画版本](src/08-OpenGL/demo/01-opengl-v200/04_opengl_hw01_prime.cpp)
 
-9. Linux
+9. OS & 平台API
     - 01-io_uring
         - [基于协程的io_uring简易框架(目前是一个 **带超时** 的 `cin` 示例)](./src/09-os/demo/01-io_uring/02_io_uring_co.cpp)
             - [WhenAny 协程](src/09-os/include/coroutine/awaiter/WhenAny.hpp)
             - [UninitializedNonVoidVariant (擦除`void`类型的类型可重复的共用体)](src/09-os/include/tools/UninitializedNonVoidVariant.hpp) (也算的 `06` 的内容...) `// @todo 支持从可构造的进行构造, 而不是一定要类型一样 (std::string <- const char *)`
     - 02-thread
-        - [线程池](src/09-os/demo/02-thread/01_cpp_threadPool.cpp) 一个现代的线程池, 支持动态扩容和返回值
+        - [线程池](src/09-os/demo/02-thread/01_cpp_threadPool.cpp) 一个现代的线程池, 支持动态扩容和返回值 (基于C++ STL API)
+    - 03-iocp
+        - [基于协程的IOCP简易框架](src/09-os/demo/03-iocp/01_iocp_test.cpp) iocp对控制台流不友好... 改日改写为纯文件io并且支持超时.

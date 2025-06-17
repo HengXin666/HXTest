@@ -22,6 +22,7 @@
 
 #include <utility>
 #include <memory>
+#include <stdexcept>
 
 #include <tools/NonVoidHelper.hpp>
 #include <tools/Uninitialized.hpp>
@@ -118,9 +119,7 @@ struct UninitializedNonVoidVariantIndex<T, UninitializedNonVoidVariant<Ts...>> {
         inline static constexpr std::size_t val 
             = std::is_same_v<T, NonVoidType<U>> 
                 ? 0 
-                : UninitializedNonVoidVariantIndex<
-                    T, UninitializedNonVoidVariant<Ts...>
-                  >::_FindIndex<Us...>::val + 1;
+                : _FindIndex<Us...>::val + 1;
     };
 
     template <typename U>
@@ -130,9 +129,7 @@ struct UninitializedNonVoidVariantIndex<T, UninitializedNonVoidVariant<Ts...>> {
     };
 
     inline static constexpr std::size_t val
-        = UninitializedNonVoidVariantIndex<
-            T, UninitializedNonVoidVariant<Ts...>
-          >::_FindIndex<Ts...>::val;
+        = _FindIndex<Ts...>::val;
 };
 
 template <std::size_t Idx, typename... Ts>
