@@ -8,8 +8,8 @@
 #include <coroutine/task/Task.hpp>
 #include <coroutine/awaiter/WhenAny.hpp>
 
-// #include <WinSock2.h>
-// #include <MSWSock.h>
+#include <WinSock2.h>
+#include <MSWSock.h>
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -51,7 +51,7 @@ struct AioTask : public ::OVERLAPPED {
             _task->_previous = coroutine;
             _task->_res = -ENOSYS;
         }
-        constexpr int await_resume() const noexcept {
+        constexpr uint64_t await_resume() const noexcept {
             return _task->_res;
         }
         AioTask* _task;
@@ -65,18 +65,147 @@ private:
     friend struct Iocp;
 
     union {
-        int _res;
+        uint64_t _res;
         HANDLE _iocpHandle;
     };
     std::size_t& _numSqesPending;
     std::coroutine_handle<> _previous;
 
     void associateHandle(HANDLE h) & {
-        checkWinError(::CreateIoCompletionPort(
-            h, _iocpHandle, (ULONG_PTR)h, 0));
+        if (!::CreateIoCompletionPort(
+            h, _iocpHandle, (ULONG_PTR)h, 0) 
+            && ::GetLastError() != ERROR_INVALID_PARAMETER
+        ) {
+            throw std::runtime_error{std::to_string(::GetLastError())};
+        }
     }
 public:
     // IO 操作 ...
+    // https://learn.microsoft.com/zh-cn/windows/win32/fileio/i-o-completion-ports
+
+/*
+支持的 I/O 函数
+
+AcceptEx: 接受一个新的传入连接, 并可选地接收对方地址和初始数据, 常用于异步套接字服务器。
+ConnectNamedPipe: 等待客户端连接到指定的命名管道实例, 用于实现服务端命名管道连接。
+DeviceIoControl: 向设备驱动程序发送控制码, 用于执行自定义的设备操作, 如读写、获取状态等。
+LockFileEx: 对文件的指定区域加锁, 支持共享锁或独占锁, 适用于进程间文件访问同步。
+ReadDirectoryChangesW: 监视目录中的文件系统更改, 如文件创建、删除、重命名或修改等。
+ReadFile: 从文件、管道、串口等读取数据, 支持 OVERLAPPED 结构实现异步读取。
+TransactNamedPipe: 向命名管道写入请求并立即读取响应, 适用于单一事务的客户端-服务端通信。
+WaitCommEvent: 等待串口通信事件发生, 如接收字符、状态位变化等, 用于串口异步事件通知。
+WriteFile: 向文件、管道、串口等写入数据, 支持 OVERLAPPED 结构实现异步写入。
+WSASendMsg: 向套接字发送带辅助控制信息的消息, 常用于实现高级协议特性如多播、IP 选项。
+WSASendTo: 向指定地址的套接字发送数据, 适用于 UDP 等无连接协议的发送操作。
+WSASend: 向已连接的套接字发送数据, 支持 OVERLAPPED 结构实现异步写入。
+WSARecvFrom: 从套接字接收数据, 并获取发送方地址, 适用于 UDP 等无连接协议的接收操作。
+LPFN_WSARECVMSG（WSARecvMsg）: 接收带有辅助控制信息的数据报, 用于处理如 IP_PKTINFO 等底层数据。
+WSARecv: 从已连接的套接字接收数据, 支持 OVERLAPPED 结构实现异步读取。
+*/
+
+    /**
+     * @brief 异步打开文件
+     * @param dirfd 目录文件描述符, 它表示相对路径的基目录; `AT_FDCWD`, 则表示相对于当前工作目录
+     * @param path 文件路径
+     * @param flags 指定文件打开的方式, 比如 `O_RDONLY`
+     * @param mode 文件权限模式, 仅在文件创建时有效 (一般写`0644`)
+     * @return AioTask&& 
+     */
+    // [[nodiscard]] AioTask&& prepOpenat(
+    //     int dirfd, 
+    //     char const *path, 
+    //     int flags,
+    //     mode_t mode
+    // ) && {
+    //     // ::io_uring_prep_openat(_sqe, dirfd, path, flags, mode);
+    //     return std::move(*this);
+    // }
+
+    /**
+     * @brief 异步创建一个套接字
+     * @param domain 指定 socket 的协议族 (AF_INET(ipv4)/AF_INET6(ipv6)/AF_UNIX/AF_LOCAL(本地))
+     * @param type 套接字类型 SOCK_STREAM(tcp)/SOCK_DGRAM(udp)/SOCK_RAW(原始)
+     * @param protocol 使用的协议, 通常为 0 (默认协议), 或者指定具体协议(如 IPPROTO_TCP、IPPROTO_UDP 等)
+     * @param flags 
+     * @return AioTask&& 
+     */
+    [[nodiscard]] AioTask&& prepSocket(
+        int domain, 
+        int type, 
+        int protocol,
+        unsigned int flags
+    ) && {
+        // ::io_uring_prep_socket(_sqe, domain, type, protocol, flags);
+        return std::move(*this);
+    }
+
+    /**
+     * @brief 异步建立连接
+     * @param fd 服务端套接字
+     * @param addr [out] 客户端信息
+     * @param addrlen [out] 客户端信息长度指针
+     * @param flags 
+     * @return AioTask&& 
+     */
+    [[nodiscard]] AioTask&& prepAccept(
+        SOCKET fd, 
+        struct ::sockaddr *addr, 
+        // ::socklen_t *addrlen,
+        int flags
+    ) && {
+        // ::io_uring_prep_accept(_sqe, fd, addr, addrlen, flags);
+        /*
+BOOL AcceptEx(
+  [in]  SOCKET sListenSocket,         // 监听的socket <服务端套接字>
+  [in]  SOCKET sAcceptSocket,         // 客户端套接字，必须是通过socket函数创建的，未绑定的套接字
+  [out] PVOID lpOutputBuffer,         // 用来接收首批数据及存储两个sockaddr结构的缓冲区
+  [in]  DWORD dwReceiveDataLength,    // 在首次接受的数据中期望读取的字节数，如果为0，则表示不接收数据
+  [in]  DWORD dwLocalAddressLength,   // 本地地址sockaddr结构的大小，此值必须至少比正在使用的传输协议的最大地址长度多16个字节
+  [in]  DWORD dwRemoteAddressLength,  // 远程地址sockaddr结构的大小，此值必须至少比正在使用的传输协议的最大地址长度多16个字节
+  [out] LPDWORD lpdwBytesReceived,    // 实际接收到的字节数
+  [in, out] LPOVERLAPPED lpOverlapped // 指向OVERLAPPED结构的指针，用于异步操作
+);
+        */
+        associateHandle(reinterpret_cast<HANDLE>(fd));
+        // √8 iocp 和 AcceptEx 的设计... 居然要我们自己传入 new 的客户端套接字...
+        SOCKET cliSocket = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (cliSocket == INVALID_SOCKET) [[unlikely]] {
+            throw std::runtime_error{"socket ERROR: " + std::to_string(::WSAGetLastError())};
+        }
+        bool ok = ::AcceptEx(
+            fd,
+            cliSocket,
+            nullptr,
+            0,
+            sizeof(::sockaddr) + 16,
+            sizeof(::sockaddr) + 16,
+            nullptr,
+            static_cast<::OVERLAPPED*>(this)
+        );
+        if (!ok && ::GetLastError() != ERROR_IO_PENDING) [[unlikely]] {
+            throw std::runtime_error{"AcceptEx ERROR: " + std::to_string(::GetLastError())};
+        }
+        ++_numSqesPending;
+        _res = cliSocket;
+        return std::move(*this);
+    }
+
+    /**
+     * @brief 异步的向服务端创建连接
+     * @param fd 客户端套接字
+     * @param addr [out] 服务端信息
+     * @param addrlen 服务端信息长度指针
+     * @return AioTask&& 
+     */
+    // [[nodiscard]] AioTask&& prepConnect(
+    //     int fd, 
+    //     const struct sockaddr *addr,
+    //     socklen_t addrlen
+    // ) && {
+    //     // ::io_uring_prep_connect(_sqe, fd, addr, addrlen);
+    //     return std::move(*this);
+    // }
+
     /**
      * @brief 异步读取文件
      * @param fd 文件句柄
@@ -95,8 +224,8 @@ BOOL ReadFile(
   HANDLE       hFile,                // 文件句柄（可为文件、管道、串口、Socket 等）
   LPVOID       lpBuffer,            // 数据读入的缓冲区指针（你准备好的内存）
   DWORD        nNumberOfBytesToRead,// 想要读取的字节数
-  LPDWORD      lpNumberOfBytesRead, // 实际读取的字节数（同步时非 NULL，异步时设为 NULL）
-  LPOVERLAPPED lpOverlapped         // OVERLAPPED 结构指针（异步时必填，同步时为 NULL）
+  LPDWORD      lpNumberOfBytesRead, // 实际读取的字节数（同步时非 NULL, 异步时设为 NULL）
+  LPOVERLAPPED lpOverlapped         // OVERLAPPED 结构指针（异步时必填, 同步时为 NULL）
 );
         */
         /*
@@ -115,7 +244,6 @@ typedef struct _OVERLAPPED {
 } OVERLAPPED, *LPOVERLAPPED;
         */
         associateHandle(fd);
-
         // 设置偏移量
         Offset = static_cast<DWORD>(offset & 0xFFFFFFFF);
         OffsetHigh = static_cast<DWORD>((offset >> 32) & 0xFFFFFFFF);
@@ -127,15 +255,188 @@ typedef struct _OVERLAPPED {
             static_cast<::OVERLAPPED*>(this)
         );
         if (!ok && ::GetLastError() != ERROR_IO_PENDING) [[unlikely]] {
-            std::cerr << "ReadFile failed: " << ::GetLastError() << '\n';
-            std::terminate();
+            throw std::runtime_error{"ReadFile ERROR: " + std::to_string(::GetLastError())};
         }
-
         ++_numSqesPending;
         return std::move(*this);
     }
 
-    
+    /**
+     * @brief 异步读取文件
+     * @param fd 文件描述符
+     * @param buf [out] 读取到的数据
+     * @param size 读取的长度
+     * @param offset 文件偏移量
+     * @return AioTask&& 
+     */
+    [[nodiscard]] AioTask&& prepRead(
+        HANDLE fd,
+        std::span<char> buf,
+        unsigned int size,
+        std::uint64_t offset
+    ) && {
+        // ::io_uring_prep_read(_sqe, fd, buf.data(), size, offset);
+        associateHandle(fd);
+        // 设置偏移量
+        Offset = static_cast<DWORD>(offset & 0xFFFFFFFF);
+        OffsetHigh = static_cast<DWORD>((offset >> 32) & 0xFFFFFFFF);
+        bool ok = ::ReadFile(
+            fd,
+            buf.data(),
+            static_cast<DWORD>(size),
+            nullptr,
+            static_cast<::OVERLAPPED*>(this)
+        );
+        if (!ok && ::GetLastError() != ERROR_IO_PENDING) [[unlikely]] {
+            throw std::runtime_error{"ReadFile ERROR: " + std::to_string(::GetLastError())};
+        }
+        ++_numSqesPending;
+        return std::move(*this);
+    }
+
+    /**
+     * @brief 异步写入文件
+     * @param fd 文件描述符
+     * @param buf [in] 写入的数据
+     * @param offset 文件偏移量
+     * @return AioTask&& 
+     */
+    [[nodiscard]] AioTask&& prepWrite(
+        HANDLE fd, 
+        std::span<char const> buf,
+        std::uint64_t offset
+    ) && {
+        // ::io_uring_prep_write(_sqe, fd, buf.data(), static_cast<unsigned int>(buf.size()), offset);
+        associateHandle(fd);
+        Offset = static_cast<DWORD>(offset & 0xFFFFFFFF);
+        OffsetHigh = static_cast<DWORD>((offset >> 32) & 0xFFFFFFFF);
+        bool ok = ::WriteFile(
+            fd,
+            buf.data(),
+            static_cast<DWORD>(buf.size()),
+            nullptr,
+            static_cast<::OVERLAPPED*>(this)
+        );
+        if (!ok && ::GetLastError() != ERROR_IO_PENDING) [[unlikely]] {
+            throw std::runtime_error{"WriteFile ERROR: " + std::to_string(::GetLastError())};
+        }
+        ++_numSqesPending;
+        return std::move(*this);
+    }
+
+    /**
+     * @brief 异步读取网络套接字文件
+     * @param fd 文件描述符
+     * @param buf [out] 读取到的数据
+     * @param flags 
+     * @return AioTask&& 
+     */
+    [[nodiscard]] AioTask&& prepRecv(
+        SOCKET fd,
+        std::span<char> buf,
+        DWORD flags
+    ) && {
+        // ::io_uring_prep_recv(_sqe, fd, buf.data(), buf.size(), flags);
+/*
+int WSARecv(
+  [in]  SOCKET                             s,                    // 目标套接字
+  [in, out] LPWSABUF                       lpBuffers,            // 数据缓冲区数组
+  [in]  DWORD                              dwBufferCount,        // 缓冲区数组中的元素数量
+  [out] LPDWORD                            lpNumberOfBytesRecvd, // 实际接收的字节数 (IOCP时候为 nullptr)
+  [in, out] LPDWORD                        lpFlags,              // 控制接收行为的标志
+  [in, out] LPWSAOVERLAPPED                lpOverlapped,         // 指向OVERLAPPED结构的指针, 用于异步操作
+  [in]  LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine   // 完成例程的回调函数, 当I/O操作完成时被调用
+);
+*/
+        WSABUF wsabuf{
+            static_cast<ULONG>(buf.size()),
+            buf.data(),
+        };
+        int ok = ::WSARecv(
+            fd,
+            &wsabuf,
+            1,
+            nullptr,
+            &flags,
+            static_cast<::OVERLAPPED*>(this),
+            nullptr
+        );
+        if (!ok && ::GetLastError() != ERROR_IO_PENDING) [[unlikely]] {
+            throw std::runtime_error{"WSARecv ERROR: " + std::to_string(::GetLastError())};
+        }
+        ++_numSqesPending;
+        return std::move(*this);
+    }
+
+    /**
+     * @brief 异步写入网络套接字文件
+     * @param fd 文件描述符
+     * @param buf [in] 写入的数据
+     * @param flags 
+     * @return AioTask&& 
+     */
+    [[nodiscard]] AioTask&& prepSend(
+        SOCKET fd, 
+        std::span<char const> buf, 
+        DWORD flags
+    ) && {
+        // ::io_uring_prep_send(_sqe, fd, buf.data(), buf.size(), flags);
+/*
+int WSASend(
+  SOCKET                             s,                     // 套接字
+  LPWSABUF                           lpBuffers,             // WSABUF
+  DWORD                              dwBufferCount,         // lpBuffers数组中的元素数目
+  LPDWORD                            lpNumberOfBytesSent,   // 返回实际发送的字节数
+  DWORD                              dwFlags,               // 标志来控制发送操作的行为, 一般写 0
+  LPWSAOVERLAPPED                    lpOverlapped,
+  LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine    // 回调函数的指针
+);
+*/
+        WSABUF wsabuf{
+            static_cast<ULONG>(buf.size()),
+            const_cast<char*>(buf.data()),
+        };
+        int ok = ::WSASend(
+            fd,
+            &wsabuf,
+            1,
+            nullptr,
+            flags,
+            static_cast<::OVERLAPPED*>(this),
+            nullptr
+        );
+        if (!ok && ::GetLastError() != ERROR_IO_PENDING) [[unlikely]] {
+            throw std::runtime_error{"WSASend ERROR: " + std::to_string(::GetLastError())};
+        }
+        ++_numSqesPending;
+        return std::move(*this);
+    }
+
+    /**
+     * @brief 异步关闭文件
+     * @param fd 文件描述符
+     * @return AioTask&& 
+     */
+    [[nodiscard]] std::suspend_never prepClose(HANDLE fd) && {
+        // ::io_uring_prep_close(_sqe, fd);
+        ::CloseHandle(fd);
+        // @!!! 这里只能是同步的...
+        return {};
+    }
+
+    /**
+     * @brief 监测一个fd的pool事件
+     * @param fd 需要监测的fd
+     * @param pollMask 需要监测的poll事件 (如:`POLLIN`)
+     * @return AioTask&& 
+     */
+    [[nodiscard]] AioTask&& prepPollAdd(
+        int fd, 
+        unsigned int pollMask
+    ) && {
+        // ::io_uring_prep_poll_add(_sqe, fd, pollMask);
+        return std::move(*this);
+    }
 
     ~AioTask() noexcept {
         HX::print::println(this, " 自杀了");
@@ -304,6 +605,20 @@ private:
         buf.resize(1024);
         co_await _iocp.makeAioTask().prepRead(file, buf, 0);
         print::println("cout << ", buf);
+        // @todo 目前会报错
+        // 原因是对同一个 fd 绑定了多次 iocp
+        // 想必之前的输入流也是这个原因...
+        // 解决方案:
+        // 1) 每次协程co_await结束, 解绑 iocp: CreateIoCompletionPort((HANDLE)cliSocket, NULL, 0, 0);
+        // 但是实际上这个是错误的, ... 并没有解绑; 并且绑定 NULL, 本质上就是错误的...
+        // https://devblogs.microsoft.com/oldnewthing/20130823-00/?p=3423
+        // 只能通过 CloseHandle || closesocket 来让内核解除关联...
+        // 2) CreateIoCompletionPort 时候, 判断失败是否为 ERROR_INVALID_PARAMETER (87)
+        // 然后忽略错误, 表示已经绑定... (但是会有一次内核态的切换...)
+        // 3) 采用 std::unordered_set 来记录哪些已经绑定了; 最后只需要在 CloseHandle / closesocket 时候erase即可
+        // 但是常数不定..., 但是应该是最优的方案了吧?!
+        co_await _iocp.makeAioTask().prepWrite(file, "fuck msvc!\nfuck windous", 0);
+        co_await _iocp.makeAioTask().prepClose(file);
         co_return;
     }
 
