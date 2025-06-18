@@ -29,8 +29,9 @@ void* checkWinError(void* data) {
 }
 
 struct AioTask : public ::OVERLAPPED {
-    AioTask(HANDLE iocpHandle) noexcept
+    AioTask(HANDLE iocpHandle, std::size_t& numSqesPending) noexcept
         : _iocpHandle{iocpHandle}
+        , _numSqesPending{numSqesPending}
     {
         ::memset(this, 0, sizeof(OVERLAPPED)); // 必须初始化 OVERLAPPED
     }
@@ -67,6 +68,7 @@ private:
         int _res;
         HANDLE _iocpHandle;
     };
+    std::size_t& _numSqesPending;
     std::coroutine_handle<> _previous;
 
     void associateHandle(HANDLE h) & {
@@ -112,9 +114,8 @@ typedef struct _OVERLAPPED {
   HANDLE    hEvent;
 } OVERLAPPED, *LPOVERLAPPED;
         */
-        HX::print::println("add {");
         associateHandle(fd);
-        HX::print::println("} // add");
+
         // 设置偏移量
         Offset = static_cast<DWORD>(offset & 0xFFFFFFFF);
         OffsetHigh = static_cast<DWORD>((offset >> 32) & 0xFFFFFFFF);
@@ -125,15 +126,16 @@ typedef struct _OVERLAPPED {
             nullptr,
             static_cast<::OVERLAPPED*>(this)
         );
-        if (!ok) [[unlikely]] {
-            DWORD err = ::GetLastError();
-            if (err != ERROR_IO_PENDING) {
-                std::cerr << "ReadFile failed: " << err << '\n';
-                std::terminate();
-            }
+        if (!ok && ::GetLastError() != ERROR_IO_PENDING) [[unlikely]] {
+            std::cerr << "ReadFile failed: " << ::GetLastError() << '\n';
+            std::terminate();
         }
+
+        ++_numSqesPending;
         return std::move(*this);
     }
+
+    
 
     ~AioTask() noexcept {
         HX::print::println(this, " 自杀了");
@@ -154,8 +156,7 @@ struct Iocp {
     Iocp& operator=(Iocp&&) = delete;
 
     AioTask makeAioTask() {
-        ++_numSqesPending;
-        return {_iocpHandle};
+        return {_iocpHandle, _numSqesPending};
     }
 
     bool isRun() const {
@@ -225,7 +226,7 @@ private:
 
 struct Loop {
     void start() {
-        auto tasks = task();
+        auto tasks = test2();
         static_cast<std::coroutine_handle<>>(tasks).resume();
         while (_iocp.isRun()) {
             _iocp.run();
@@ -233,6 +234,7 @@ struct Loop {
     }
     
 private:
+    // 控制台读写 (有问题... win的问题, 应该不是我的)
     Task<> task() {
         using namespace HX;
         using namespace std::chrono;
@@ -284,6 +286,24 @@ private:
             }
             print::println("echo: ", buf);
         }
+        co_return;
+    }
+
+    // 普通文件读写
+    Task<> test2() {
+        HANDLE file = ::CreateFileA(
+            "test.txt",                        // 文件名
+            GENERIC_READ | GENERIC_WRITE,     // 读写权限
+            FILE_SHARE_READ | FILE_SHARE_WRITE, // 共享模式
+            nullptr,                          // 默认安全属性
+            OPEN_ALWAYS,                      // 如果文件不存在则创建
+            FILE_FLAG_OVERLAPPED | FILE_ATTRIBUTE_NORMAL, // 必须带 FILE_FLAG_OVERLAPPED
+            nullptr                           // 不拷贝句柄
+        );
+        std::string buf;
+        buf.resize(1024);
+        co_await _iocp.makeAioTask().prepRead(file, buf, 0);
+        print::println("cout << ", buf);
         co_return;
     }
 
