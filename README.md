@@ -72,4 +72,4 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
     - 02-thread
         - [线程池](src/09-os/demo/02-thread/01_cpp_threadPool.cpp) 一个现代的线程池, 支持动态扩容和返回值 (基于C++ STL API)
     - 03-iocp
-        - [基于协程的IOCP简易框架](src/09-os/demo/03-iocp/01_iocp_test.cpp) iocp对控制台流不友好... 改日改写为纯文件io并且支持超时.
+        - [基于协程的IOCP简易框架](src/09-os/demo/03-iocp/01_iocp_test.cpp) 待支持超时.

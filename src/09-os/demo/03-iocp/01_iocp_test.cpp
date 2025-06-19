@@ -1,6 +1,7 @@
 #include <HXprint/print.h>
 
 #include <cstring>
+#include <unordered_set>
 #include <chrono>
 #include <coroutine>
 #include <thread>
@@ -29,9 +30,9 @@ void* checkWinError(void* data) {
 }
 
 struct AioTask : public ::OVERLAPPED {
-    AioTask(HANDLE iocpHandle, std::size_t& numSqesPending) noexcept
+    AioTask(HANDLE iocpHandle, std::unordered_set<::HANDLE>& runingHandle) noexcept
         : _iocpHandle{iocpHandle}
-        , _numSqesPending{numSqesPending}
+        , _runingHandle{runingHandle}
     {
         ::memset(this, 0, sizeof(OVERLAPPED)); // 必须初始化 OVERLAPPED
     }
@@ -68,16 +69,19 @@ private:
         uint64_t _res;
         HANDLE _iocpHandle;
     };
-    std::size_t& _numSqesPending;
+    std::unordered_set<::HANDLE>& _runingHandle;
     std::coroutine_handle<> _previous;
 
     void associateHandle(HANDLE h) & {
+        if (_runingHandle.count(h))
+            return;
         if (!::CreateIoCompletionPort(
             h, _iocpHandle, (ULONG_PTR)h, 0) 
             && ::GetLastError() != ERROR_INVALID_PARAMETER
         ) {
             throw std::runtime_error{std::to_string(::GetLastError())};
         }
+        _runingHandle.insert(h);
     }
 public:
     // IO 操作 ...
@@ -185,7 +189,6 @@ BOOL AcceptEx(
         if (!ok && ::GetLastError() != ERROR_IO_PENDING) [[unlikely]] {
             throw std::runtime_error{"AcceptEx ERROR: " + std::to_string(::GetLastError())};
         }
-        ++_numSqesPending;
         _res = cliSocket;
         return std::move(*this);
     }
@@ -257,7 +260,6 @@ typedef struct _OVERLAPPED {
         if (!ok && ::GetLastError() != ERROR_IO_PENDING) [[unlikely]] {
             throw std::runtime_error{"ReadFile ERROR: " + std::to_string(::GetLastError())};
         }
-        ++_numSqesPending;
         return std::move(*this);
     }
 
@@ -290,7 +292,6 @@ typedef struct _OVERLAPPED {
         if (!ok && ::GetLastError() != ERROR_IO_PENDING) [[unlikely]] {
             throw std::runtime_error{"ReadFile ERROR: " + std::to_string(::GetLastError())};
         }
-        ++_numSqesPending;
         return std::move(*this);
     }
 
@@ -320,7 +321,6 @@ typedef struct _OVERLAPPED {
         if (!ok && ::GetLastError() != ERROR_IO_PENDING) [[unlikely]] {
             throw std::runtime_error{"WriteFile ERROR: " + std::to_string(::GetLastError())};
         }
-        ++_numSqesPending;
         return std::move(*this);
     }
 
@@ -364,7 +364,6 @@ int WSARecv(
         if (!ok && ::GetLastError() != ERROR_IO_PENDING) [[unlikely]] {
             throw std::runtime_error{"WSARecv ERROR: " + std::to_string(::GetLastError())};
         }
-        ++_numSqesPending;
         return std::move(*this);
     }
 
@@ -408,7 +407,6 @@ int WSASend(
         if (!ok && ::GetLastError() != ERROR_IO_PENDING) [[unlikely]] {
             throw std::runtime_error{"WSASend ERROR: " + std::to_string(::GetLastError())};
         }
-        ++_numSqesPending;
         return std::move(*this);
     }
 
@@ -419,7 +417,17 @@ int WSASend(
      */
     [[nodiscard]] std::suspend_never prepClose(HANDLE fd) && {
         // ::io_uring_prep_close(_sqe, fd);
-        ::CloseHandle(fd);
+        bool ok = ::CloseHandle(fd);
+        if (!ok) [[unlikely]] {
+            // 如果这里抛异常了, 那是不是无法关闭?!
+            // 除非 fd 根本就不是由 win32 创建的?!
+            // 原本的东西留着也没有用了...
+            if (auto it = _runingHandle.find(fd); it != _runingHandle.end()) {
+                _runingHandle.erase(it);
+            }
+            throw std::runtime_error{"CloseHandle ERROR: " + std::to_string(::GetLastError())};
+        }
+        _runingHandle.erase(fd);
         // @!!! 这里只能是同步的...
         return {};
     }
@@ -450,18 +458,18 @@ struct Iocp {
             nullptr,
             0,
             0))}
-        , _numSqesPending{}
+        , _runingHandle{}
         , _tasks{}
     {}
 
     Iocp& operator=(Iocp&&) = delete;
 
     AioTask makeAioTask() {
-        return {_iocpHandle, _numSqesPending};
+        return {_iocpHandle, _runingHandle};
     }
 
     bool isRun() const {
-        return _numSqesPending;
+        return _runingHandle.size();
     }
 
     void run() {
@@ -509,7 +517,6 @@ BOOL GetQueuedCompletionStatusEx(
             t.resume();
         }
 
-        _numSqesPending -= n;
         _tasks.clear();
     }
 
@@ -521,13 +528,13 @@ BOOL GetQueuedCompletionStatusEx(
 
 private:
     HANDLE _iocpHandle;
-    std::size_t _numSqesPending;
+    std::unordered_set<::HANDLE> _runingHandle;
     std::vector<std::coroutine_handle<>> _tasks;
 };
 
 struct Loop {
     void start() {
-        auto tasks = test2();
+        auto tasks = task();
         static_cast<std::coroutine_handle<>>(tasks).resume();
         while (_iocp.isRun()) {
             _iocp.run();
@@ -541,7 +548,6 @@ private:
         using namespace std::chrono;
         print::println("Task<> start!");
 
-        // iocp 不太能 读控制台流...
         HANDLE hStdin = CreateFile(
             "CONIN$", 
             GENERIC_READ,
@@ -585,6 +591,7 @@ private:
                 std::cerr << "fxxk throw: " << e.what();
                 co_return;
             }
+            buf[buf.find('\n')] = '\0'; // 因为回车才有输入, 所以必然有回车
             print::println("echo: ", buf);
         }
         co_return;
