@@ -471,8 +471,9 @@ int WSASend(
      * @param flags 
      * @return AioTask&& 
      */
-    [[nodiscard]] AioTask&& prepLinkTimeout(
-        HANDLE fd
+    [[nodiscard]] Task<> prepLinkTimeout(
+        HANDLE fd,
+        TimerLoop::TimerAwaiter timerTask // 获得所有权, 此时 timerTask 生命周期由协程接管
     ) && {
         // ::io_uring_prep_link_timeout(_sqe, ts, flags);
         /*
@@ -485,6 +486,7 @@ BOOL PostQueuedCompletionStatus(
         // 但是之前的 OVERLAPPED 也会被 iocp 取出! 因此我们需要自己标记一下 ... 写个状态机 ...
 );
         */
+        co_await timerTask;
         bool ok = ::PostQueuedCompletionStatus(
             fd,
             0,
@@ -495,18 +497,14 @@ BOOL PostQueuedCompletionStatus(
             throw std::runtime_error{"PostQueuedCompletionStatus ERROR: " 
                 + std::to_string(::GetLastError())};
         }
-        return std::move(*this);
+        co_return;
     }
 
     [[nodiscard]] inline static auto linkTimeout(
         AioTask&& task, 
-        std::chrono::system_clock::duration
+        Task<>&& timeoutTask
     ) {
-        return whenAny(std::move(task));
-        // return internal::whenAny(
-        //     std::make_index_sequence<1>(), 
-        //     std::move(task)
-        // );
+        return whenAny(std::move(task), std::move(timeoutTask));
     }
 
     ~AioTask() noexcept {
@@ -640,7 +638,6 @@ private:
             co_return;
         }
         
-        // 设置控制台为行输入模式
         DWORD mode = 0;
         if (!GetConsoleMode(hStdin, &mode)) {
             std::cerr << "GetConsoleMode failed\n";
@@ -648,21 +645,27 @@ private:
             co_return;
         }
         
-        // mode |= ENABLE_LINE_INPUT;   // 行输入模式
-        // mode |= ENABLE_ECHO_INPUT;    // 回显输入
-        // mode |= ENABLE_PROCESSED_INPUT; // 处理控制键
-        
-        // if (!SetConsoleMode(hStdin, mode)) {
-        //     std::cerr << "SetConsoleMode failed\n";
-        //     CloseHandle(hStdin);
-        //     co_return;
-        // }
         while (true) {
             std::string buf;
             buf.resize(128);
             std::cerr << "cin >> ";
             try {
-                co_await _iocp.makeAioTask().prepRead(hStdin, buf, 0);
+                auto res = co_await AioTask::linkTimeout(
+                    _iocp.makeAioTask().prepRead(
+                        hStdin,
+                        buf,
+                        0
+                    ),
+                    _iocp.makeAioTask().prepLinkTimeout(
+                        hStdin,
+                        makeTimer().sleepFor(3s)
+                    )
+                );
+                print::println("res: ", res.index());
+                if (res.index() == 1) {
+                    print::print("超时了~");
+                    co_return;
+                }
             } catch (std::exception& e) {
                 std::cerr << "fxxk throw: " << e.what();
                 co_return;
@@ -742,5 +745,6 @@ int main() {
     setlocale(LC_ALL, "zh_CN.UTF-8");
     Loop loop;
     loop.start();
+    // constexpr bool _ = AwaitableLike<Task<>>; 
     return 0;
 }
