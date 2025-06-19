@@ -5,19 +5,20 @@
 #include <chrono>
 #include <coroutine>
 #include <thread>
+#include <limits>
 
 #include <coroutine/task/Task.hpp>
 #include <coroutine/awaiter/WhenAny.hpp>
-
-#include <WinSock2.h>
-#include <MSWSock.h>
+#include <coroutine/loop/TimerLoop.hpp>
 
 #define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <WinSock2.h>
+#include <MSWSock.h>
 #include <Windows.h>
 
 // #pragma comment(lib, "Ws2_32.lib")
 // #pragma comment(lib, "Mswsock.lib")
-
 
 namespace HX {
 
@@ -29,6 +30,21 @@ void* checkWinError(void* data) {
     return data;
 }
 
+DWORD toDwMilliseconds(std::chrono::system_clock::duration dur) {
+    using namespace std::chrono;
+
+    // 转换为毫秒（有符号 64 位整数）
+    auto ms = duration_cast<milliseconds>(dur).count();
+
+    // 如果负数或太大，就处理为 0 或 INFINITE
+    if (ms <= 0)
+        return 0;
+    if (ms >= std::numeric_limits<DWORD>::max())
+        return INFINITE;
+
+    return static_cast<DWORD>(ms);
+}
+
 struct AioTask : public ::OVERLAPPED {
     AioTask(HANDLE iocpHandle, std::unordered_set<::HANDLE>& runingHandle) noexcept
         : _iocpHandle{iocpHandle}
@@ -36,7 +52,8 @@ struct AioTask : public ::OVERLAPPED {
     {
         ::memset(this, 0, sizeof(OVERLAPPED)); // 必须初始化 OVERLAPPED
     }
-#if 0 // 注意: 不能存在`移动`, 否则 IoUring::makeAioTask 返回就是 构造的新对象; 屏蔽了移动, 反而是编译器优化!
+#if 1 // 注意: 不能存在`移动`, 否则 IoUring::makeAioTask 返回就是 构造的新对象; 屏蔽了移动, 反而是编译器优化!
+      // 得写移动, 不然无法在 MSVC 上通过编译 对于 HX::whenAny
     AioTask& operator=(AioTask const&) noexcept = delete;
     AioTask(AioTask const&) noexcept = delete;
 
@@ -69,11 +86,12 @@ private:
         uint64_t _res;
         HANDLE _iocpHandle;
     };
-    std::unordered_set<::HANDLE>& _runingHandle;
+    std::reference_wrapper<std::unordered_set<::HANDLE>> _runingHandle;
     std::coroutine_handle<> _previous;
 
     void associateHandle(HANDLE h) & {
-        if (_runingHandle.count(h))
+        auto&& runingHandleRef = _runingHandle.get();
+        if (runingHandleRef.count(h))
             return;
         if (!::CreateIoCompletionPort(
             h, _iocpHandle, (ULONG_PTR)h, 0) 
@@ -81,7 +99,7 @@ private:
         ) {
             throw std::runtime_error{std::to_string(::GetLastError())};
         }
-        _runingHandle.insert(h);
+        runingHandleRef.insert(h);
     }
 public:
     // IO 操作 ...
@@ -417,17 +435,18 @@ int WSASend(
      */
     [[nodiscard]] std::suspend_never prepClose(HANDLE fd) && {
         // ::io_uring_prep_close(_sqe, fd);
+        auto&& runingHandleRef = _runingHandle.get();
         bool ok = ::CloseHandle(fd);
         if (!ok) [[unlikely]] {
             // 如果这里抛异常了, 那是不是无法关闭?!
             // 除非 fd 根本就不是由 win32 创建的?!
             // 原本的东西留着也没有用了...
-            if (auto it = _runingHandle.find(fd); it != _runingHandle.end()) {
-                _runingHandle.erase(it);
+            if (auto it = runingHandleRef.find(fd); it != runingHandleRef.end()) {
+                runingHandleRef.erase(it);
             }
             throw std::runtime_error{"CloseHandle ERROR: " + std::to_string(::GetLastError())};
         }
-        _runingHandle.erase(fd);
+        runingHandleRef.erase(fd);
         // @!!! 这里只能是同步的...
         return {};
     }
@@ -444,6 +463,50 @@ int WSASend(
     ) && {
         // ::io_uring_prep_poll_add(_sqe, fd, pollMask);
         return std::move(*this);
+    }
+
+    /**
+     * @brief 创建未链接的超时操作
+     * @param ts 超时时间
+     * @param flags 
+     * @return AioTask&& 
+     */
+    [[nodiscard]] AioTask&& prepLinkTimeout(
+        HANDLE fd
+    ) && {
+        // ::io_uring_prep_link_timeout(_sqe, ts, flags);
+        /*
+BOOL PostQueuedCompletionStatus(
+    HANDLE       CompletionPort,                // 目标完成端口的句柄
+    DWORD        dwNumberOfBytesTransferred,    // 自定义的字节数, 可用于传递信息
+    ULONG_PTR    dwCompletionKey,               // 自定义的完成键, 可用于区分不同的操作或I/O源
+    LPOVERLAPPED lpOverlapped                   // OVERLAPPED结构的指针
+        // 注: GetQueuedCompletionStatusEx 拿到的是 此处的 OVERLAPPED
+        // 但是之前的 OVERLAPPED 也会被 iocp 取出! 因此我们需要自己标记一下 ... 写个状态机 ...
+);
+        */
+        bool ok = ::PostQueuedCompletionStatus(
+            fd,
+            0,
+            0,
+            static_cast<::OVERLAPPED*>(this)
+        );
+        if (!ok) [[unlikely]] {
+            throw std::runtime_error{"PostQueuedCompletionStatus ERROR: " 
+                + std::to_string(::GetLastError())};
+        }
+        return std::move(*this);
+    }
+
+    [[nodiscard]] inline static auto linkTimeout(
+        AioTask&& task, 
+        std::chrono::system_clock::duration
+    ) {
+        return whenAny(std::move(task));
+        // return internal::whenAny(
+        //     std::make_index_sequence<1>(), 
+        //     std::move(task)
+        // );
     }
 
     ~AioTask() noexcept {
@@ -472,7 +535,7 @@ struct Iocp {
         return _runingHandle.size();
     }
 
-    void run() {
+    void run(std::optional<std::chrono::system_clock::duration> timeout) {
 /*
 // 只能一次获取一个
 BOOL GetQueuedCompletionStatus(
@@ -496,13 +559,16 @@ BOOL GetQueuedCompletionStatusEx(
 */
         std::array<::OVERLAPPED_ENTRY, 64> arr;
         ULONG n;
-
+        decltype(toDwMilliseconds(*timeout)) dw = INFINITE;
+        if (timeout) {
+            dw = toDwMilliseconds(*timeout);
+        }
         ::GetQueuedCompletionStatusEx(
             _iocpHandle,
             arr.data(),
             static_cast<DWORD>(arr.size()),
             &n,
-            INFINITE,
+            dw,
             false
         );
 
@@ -534,16 +600,26 @@ private:
 
 struct Loop {
     void start() {
-        auto tasks = task();
+        auto tasks = test1();
         static_cast<std::coroutine_handle<>>(tasks).resume();
-        while (_iocp.isRun()) {
-            _iocp.run();
+        while (true) {
+            auto timeout = _timerLoop.run();
+            if (_iocp.isRun()) {
+                _iocp.run(timeout);
+            } else if (timeout) {
+                std::this_thread::sleep_for(*timeout);
+            } else {
+                break;
+            }
         }
     }
     
+    auto makeTimer() {
+        return TimerLoop::makeTimer(_timerLoop);
+    }
 private:
     // 控制台读写 (有问题... win的问题, 应该不是我的)
-    Task<> task() {
+    Task<> test1() {
         using namespace HX;
         using namespace std::chrono;
         print::println("Task<> start!");
@@ -629,7 +705,23 @@ private:
         co_return;
     }
 
+    // 测试定时器
+    Task<> test3() {
+        using namespace std::chrono;
+        print::println("等我 3s");
+        co_await makeTimer().sleepFor(3s);
+        print::println("等我 1s");
+        co_await makeTimer().sleepFor(1s);
+        print::println("我结束啦, 但是还要等一下...");
+        co_await whenAny(
+            makeTimer().sleepFor(1s), 
+            makeTimer().sleepFor(120s)
+        );
+        print::println("才等了 1s...");
+    }
+
     Iocp _iocp;
+    TimerLoop _timerLoop;
 };
 
 } // namespace HX

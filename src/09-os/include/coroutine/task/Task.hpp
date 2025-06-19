@@ -30,7 +30,7 @@ template <
     typename P = Promise<T>,
     typename Awaiter = ExitAwaiter<T, P>
 >
-struct Task {
+struct [[nodiscard]] Task {
     using promise_type = P;
 
     Task(std::coroutine_handle<promise_type> h = nullptr)

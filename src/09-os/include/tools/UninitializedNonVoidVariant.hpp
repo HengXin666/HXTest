@@ -409,10 +409,22 @@ private:
     void del(std::index_sequence<Idx...>) noexcept {
         using DelFuncPtr = void (*)(UninitializedNonVoidVariant&);
         static constexpr DelFuncPtr delFuncs[N] {
-            [](UninitializedNonVoidVariant& u){ u.get<Idx, ExceptionMode::Nothrow>().~NonVoidType<Ts>(); }...
+            [](UninitializedNonVoidVariant& u) {
+#if defined(_MSC_VER)
+                // 实际上里面几乎就是套了一层模版, 然后 ->~T
+                // 原来是 MSVC 不能 ->~NonVoidType<T> 啊!
+                std::destroy_at(std::addressof(u.get<Idx, ExceptionMode::Nothrow>()));
+#elif defined(__GNUC__) || defined(__clang__)
+                u.get<Idx, ExceptionMode::Nothrow>().~NonVoidType<Ts>(); 
+#else
+                // 暂时不支持当前编译器
+                #error "Currently not supported by the compiler"
+#endif
+            }...
         };
         if (_idx != UninitializedNonVoidVariantNpos) {
             delFuncs[_idx](*this);
+            // @todo 日后可以使用宏或者再是模版, 支持短路式的析构, 而不是跳表~
             _idx = UninitializedNonVoidVariantNpos;
         }
     }

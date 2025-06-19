@@ -23,15 +23,31 @@
 #include <coroutine>
 
 namespace HX {
+template <typename T>
+concept Awaiter = requires(T const t, std::coroutine_handle<> h) {
+    { t.await_ready() } -> std::convertible_to<bool>; // trailing-return-type requirement (后置返回类型要求)
+    t.await_suspend(h);
+    t.await_resume();
+};
 
 template <typename T>
-concept Awaiter = requires(T t) {
-    t.await_ready();
-    t.await_suspend(std::coroutine_handle<>{});
-    t.await_resume();
-} || requires(T t) {
+concept Awaitable = requires(T t) {
     t.operator co_await();
 };
+
+template <typename T>
+concept AwaitableLike = Awaiter<T> || Awaitable<T>;
+
+template <AwaitableLike T>
+using AwaiterReturnValue = decltype([](auto t){
+    if constexpr (Awaiter<decltype(t)>) {
+        return t.await_resume();
+    } else if constexpr (Awaitable<decltype(t)>) {
+        return t.operator co_await().await_resume();
+    } else {
+        static_assert(sizeof(T) < 0, "The type is not Awaiter");
+    }
+}(std::declval<T>()));
 
 } // namespace HX
 

@@ -77,25 +77,33 @@ struct WhenAnyAwaiter {
     WhenAnyCtlBlock& ctlBlock;
 };
 
-template <std::size_t Idx, Awaiter T, typename Res>
+template <std::size_t Idx, AwaitableLike T, typename Res>
 Task<std::coroutine_handle<>, WhenAnyPromise> start(
     T&& t, Res& res, WhenAnyCtlBlock& ctlBlock
-) {  
-    if constexpr (std::is_void_v<decltype(t.operator co_await().await_resume())>) {
-        co_await t;
+) {
+    if constexpr (Awaiter<T>) {
+        if constexpr (std::is_void_v<decltype(t.await_resume())>) {
+            co_await t;
+        } else {
+            HX::get<Idx>(res) = std::move(co_await t);
+        }
+    } else if constexpr (Awaitable<T>) {
+        if constexpr (std::is_void_v<decltype(t.operator co_await().await_resume())>) {
+            co_await t;
+        } else {
+            HX::get<Idx>(res) = std::move(co_await t);
+        }
     } else {
-        HX::get<Idx>(res) = std::move(co_await t);
+        static_assert(sizeof(T) < 0, "The type is not Awaiter");
     }
     co_return ctlBlock.previous;
 }
 
 template <
     std::size_t... Idx, 
-    Awaiter... Ts, 
+    AwaitableLike... Ts, 
     typename ResType = UninitializedNonVoidVariant<
-        decltype(
-            std::declval<Ts>().operator co_await().await_resume()
-        )...
+        AwaiterReturnValue<Ts>...
     >
 >
 Task<ResType> whenAny(std::index_sequence<Idx...>, Ts&&... ts) {
@@ -117,7 +125,7 @@ Task<ResType> whenAny(std::index_sequence<Idx...>, Ts&&... ts) {
 
 } // namespace internal
 
-template <Awaiter... Ts>
+template <AwaitableLike... Ts>
 auto whenAny(Ts&&... ts) {
     return internal::whenAny(
         std::make_index_sequence<sizeof...(ts)>(), 
