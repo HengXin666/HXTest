@@ -48,6 +48,10 @@ private:
 
 template <>
 struct Uninitialized<void> {
+    Uninitialized() noexcept {}
+    Uninitialized(Uninitialized &&) = delete;
+    ~Uninitialized() noexcept {}
+    
     auto move() noexcept { return NonVoidHelper<>{}; }
     void set(NonVoidHelper<>) noexcept {}
 };

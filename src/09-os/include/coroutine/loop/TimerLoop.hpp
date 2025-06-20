@@ -20,10 +20,11 @@
 #ifndef _HX_TIMERLOOP_H_
 #define _HX_TIMERLOOP_H_
 
-#include <optional>
 #include <chrono>
 #include <map>
 #include <coroutine>
+
+#include <tools/UninitializedNonVoidVariant.hpp>
 
 // @debug
 #include <HXprint/print.h>
@@ -81,23 +82,22 @@ struct TimerLoop {
             , _expireTime{std::move(that._expireTime)}
             , _it{std::move(that._it)}
         {
-            // wcsndm!!! 删掉下面的日志就会抛异常, in _it MSVC STL 内部...
-            // 钩子吧! 又是什么未定义行为?
+            // 666! 换自定义的 UninitializedNonVoidVariant 就好了?
+            // MSVC STL 你滴是什么滴干活?!
             print::println("that: ", this, " [TimerAwaiter&&] ref: ", _timerLoop);
-            print::println("this: ", this, " [TimerAwaiter&&] ref: ", _timerLoop);
+            // print::println("this: ", this, " [TimerAwaiter&&] ref: ", _timerLoop);
         }
 
         TimerAwaiter& operator=(TimerAwaiter&& that) noexcept {
             _timerLoop = that._timerLoop;
             _expireTime = std::move(that._expireTime);
-            _it.swap(that._it);
-            print::println("that: ", this, " [operator=&&] ref: ", _timerLoop);
+            _it = std::move(that._it);
+            // print::println("that: ", this, " [operator=&&] ref: ", _timerLoop);
             print::println("this: ", this, " [operator=&&] ref: ", _timerLoop);
             return *this;
         }
 
         bool await_ready() const noexcept {
-            print::println("this: ", this, " ref01: ", _timerLoop);
             print::println("this: ", this, " ref01: ", _timerLoop);
             return false;
         }
@@ -116,14 +116,14 @@ struct TimerLoop {
         }
         ~TimerAwaiter() noexcept {
             print::println("del! this: ", this, " ref: ", _timerLoop);
-            if (_it) {
-                _timerLoop->_timerTree.erase(*_it);
+            if (_it.index() != UninitializedNonVoidVariantNpos) {
+                _timerLoop->_timerTree.erase(_it.get<TimerTree::iterator, ExceptionMode::Nothrow>());
             }
         }
     private:
         TimerLoop* _timerLoop;
         std::chrono::system_clock::time_point _expireTime;  // 过期时间
-        mutable std::optional<TimerTree::iterator> _it;     // 红黑树迭代器
+        mutable UninitializedNonVoidVariant<TimerTree::iterator> _it;     // 红黑树迭代器
     };
 private:
     struct [[nodiscard]] TimerAwaiterBuilder {

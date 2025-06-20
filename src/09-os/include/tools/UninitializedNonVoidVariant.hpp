@@ -65,6 +65,12 @@ struct UninitializedNonVoidVariantImpl<Idx, T> {
     inline static constexpr auto&& get(UVariant&& v) noexcept {
         return std::move(v._head._data);
     }
+
+    ~UninitializedNonVoidVariantImpl() noexcept {
+        if constexpr (std::is_destructible_v<decltype(_head)>) {
+            _head.~UninitializedNonVoidVariantHead<Idx, T>();
+        }
+    }
 };
 
 template <std::size_t Idx, typename T, typename... Ts>
@@ -102,6 +108,15 @@ struct UninitializedNonVoidVariantImpl<Idx, T, Ts...> {
             return std::move(
                 UninitializedNonVoidVariantImpl<Idx + 1, Ts...>::template get<Index>(std::move(v._body))
             );
+        }
+    }
+
+    ~UninitializedNonVoidVariantImpl() noexcept {
+        if constexpr (std::is_destructible_v<decltype(_head)>) {
+            _head.~UninitializedNonVoidVariantHead<Idx, T>();
+        }
+        if constexpr (std::is_destructible_v<decltype(_body)>) {
+            _body.~UninitializedNonVoidVariantImpl<Idx + 1, Ts...>();
         }
     }
 };

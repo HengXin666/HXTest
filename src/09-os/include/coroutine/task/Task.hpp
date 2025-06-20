@@ -33,7 +33,7 @@ template <
 struct [[nodiscard]] Task {
     using promise_type = P;
 
-    Task(std::coroutine_handle<promise_type> h = nullptr)
+    constexpr Task(std::coroutine_handle<promise_type> h = nullptr)
         : _handle(h)
     {}
 
@@ -46,14 +46,14 @@ struct [[nodiscard]] Task {
     Task(Task&&) noexcept = default;
     Task& operator=(Task&&) noexcept = default;
 
-    Task(Task const&) noexcept = default;
-    Task& operator=(Task const&) noexcept = default;
+    Task(Task const&) noexcept = delete;
+    Task& operator=(Task const&) noexcept = delete;
 
-    Awaiter operator co_await() noexcept {
+    constexpr Awaiter operator co_await() noexcept {
         return Awaiter{_handle};
     }
 
-    operator std::coroutine_handle<>() const noexcept {
+    constexpr operator std::coroutine_handle<>() const noexcept {
         return _handle;
     }
 
