@@ -51,7 +51,7 @@ decltype(auto) funA4_nr(T t) {
 
 template <typename T>
 std::string_view getType() {
-#if 1
+#if !defined(_MSC_VER)
     auto str = __PRETTY_FUNCTION__;
     std::string_view res{str};
     res = res.substr(res.find('[') + 1);
@@ -59,7 +59,10 @@ std::string_view getType() {
     return res;
 #else
     auto str = __FUNCSIG__; // MSVC 的 __FUNCSIG__
-    #error "not code"
+    std::string_view res{str};
+    res = res.substr(res.find("getType<") + 8);
+    res = res.substr(0, res.find(">"));
+    return res;
 #endif
 }
 

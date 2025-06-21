@@ -55,6 +55,8 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
             - [对于auto返回值的讨论](src/06-std-analyse/test/09-auto/01_auto_return.cpp) 讨论了 `auto`、`auto&`、`auto&&`、`decltype(auto)` 在各种常见情况下作为函数返回值时候的效果, 对比其不同.
         - 10-临时对象声明周期探索实验
             - [实验代码](src/06-std-analyse/test/10-tmp-obj-test/01_tmp_obj_test.cpp)
+            - [对返回 A&& 的实验探讨(ub无法展现)](src/06-std-analyse/test/10-tmp-obj-test/02_rxv_ub.cpp)
+            - [A&& 导致的悬挂引用(实例)](src/06-std-analyse/test/10-10-tmp-obj-test/03_xv_ub.cpp)
 7. QT
    - 01-QML [QML-目录](./src/07-qt/01-qml/) | 笔记: [现代C++QT-QML](https://hengxin666.github.io/HXLoLi/docs/%E7%A8%8B%E5%BA%8F%E8%AF%AD%E8%A8%80/C++/%E7%8E%B0%E4%BB%A3C++/%E7%8E%B0%E4%BB%A3C++QT/QML/Window%E4%BB%8B%E7%BB%8D%E4%B8%B6%E5%88%9D%E8%AF%86)
 

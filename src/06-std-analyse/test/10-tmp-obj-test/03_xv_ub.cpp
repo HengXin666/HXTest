@@ -52,7 +52,7 @@ struct MD {
             , _expireTime{std::move(that._expireTime)}
             , _it{std::move(that._it)}
         {
-            // 如果缺少下面的, 就会抛异常
+            // 如果缺少下面的, 就会抛异常 仅 MSVC (?)
             // print::println("that: ", this, " [A&&] ref: ", _md);
             print::println("this: ", this, " [A&&] ref: ", _md);
         }
@@ -102,9 +102,17 @@ private:
         {}
     
         BuildA& operator=(BuildA&&) noexcept = delete;
-    
+
+        // 返回值不能写为 decltype(auto) 或者 && !? 只能写 A?
+        // 但是我是传入 void linkTimeout(MD::A timeout)
+        // 理论上应该是使用移动构造得出新对象 timeout 吧?
         A&& build(std::chrono::system_clock::duration t) && {
-            return std::move(A{_md}.setExpireTime(makeTime(t)));
+            // 因为不是 return std::move(*this); 所以不是合适的, 返回的是将亡值
+            return 
+                // std::move( // 这个 std::move 可有可无
+                    A{_md}.setExpireTime(makeTime(t)
+                // )
+            );
         }
 
         MD* _md;
@@ -119,23 +127,19 @@ private:
 };
 
 
-static void linkTimeout(MD::A timeout) { // 如果修改为 A&&, insert后, 会卡死在STL的一个while中
+static void linkTimeout(MD::A timeout) { // 如果修改为 A&& 或者 const&, insert后, 会卡死在STL的一个while中
+                                         // _Iterator_base12::_Orphan_me_unlocked_v3 中 的 while
     timeout.await_suspend();
     timeout.await_resume();
 }
 
 void test02() {
     MD fk;
-    linkTimeout(MD::makeBuild(fk).build(1s));
-}
-
-void test01() {
-    // std::optional<It> it;
-    // it = mp.insert({makeTime(1s), 1});
-    // auto jt = std::move(it);
-    // auto [k, v] = **jt;
-    // (void)k;
-    // print::println("v: ", v);
+    linkTimeout(
+        // std::move( // 如果此处加 std::move 毫无作用 | 是可有可无的
+            MD::makeBuild(fk).build(1s)
+        // )
+    );
 }
 
 int main() {

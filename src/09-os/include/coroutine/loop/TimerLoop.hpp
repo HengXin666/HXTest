@@ -24,11 +24,6 @@
 #include <map>
 #include <coroutine>
 
-#include <tools/UninitializedNonVoidVariant.hpp>
-
-// @debug
-#include <HXprint/print.h>
-
 namespace HX {
 
 /**
@@ -57,7 +52,6 @@ struct TimerLoop {
         std::chrono::system_clock::time_point expireTime,
         std::coroutine_handle<> coroutine
     ) {
-        print::println("insert: ", coroutine.address());
         return _timerTree.insert({expireTime, coroutine});
     }
     struct [[nodiscard]] TimerAwaiter {
@@ -65,44 +59,18 @@ struct TimerLoop {
             : _timerLoop{timerLoop}
             , _expireTime{}
             , _it{}
-        {
-            print::println("this: ", this, " ref: ", _timerLoop);
-        }
+        {}
 
-        // TimerAwaiter(TimerAwaiter const&) = delete;
-        // TimerAwaiter& operator=(TimerAwaiter const&) noexcept = delete;
+        TimerAwaiter(TimerAwaiter const&) = delete;
+        TimerAwaiter& operator=(TimerAwaiter const&) noexcept = delete;
 
-        // TimerAwaiter(TimerAwaiter&&) = default;
-        // TimerAwaiter& operator=(TimerAwaiter&&) noexcept = default;
-
-        // TimerAwaiter& operator=(TimerAwaiter&&) noexcept = delete;
-
-        TimerAwaiter(TimerAwaiter&& that)
-            : _timerLoop{that._timerLoop}
-            , _expireTime{std::move(that._expireTime)}
-            , _it{std::move(that._it)}
-        {
-            // 666! 换自定义的 UninitializedNonVoidVariant 就好了?
-            // MSVC STL 你滴是什么滴干活?!
-            print::println("that: ", this, " [TimerAwaiter&&] ref: ", _timerLoop);
-            // print::println("this: ", this, " [TimerAwaiter&&] ref: ", _timerLoop);
-        }
-
-        TimerAwaiter& operator=(TimerAwaiter&& that) noexcept {
-            _timerLoop = that._timerLoop;
-            _expireTime = std::move(that._expireTime);
-            _it = std::move(that._it);
-            // print::println("that: ", this, " [operator=&&] ref: ", _timerLoop);
-            print::println("this: ", this, " [operator=&&] ref: ", _timerLoop);
-            return *this;
-        }
+        TimerAwaiter(TimerAwaiter&&) = default;
+        TimerAwaiter& operator=(TimerAwaiter&&) noexcept = default;
 
         bool await_ready() const noexcept {
-            print::println("this: ", this, " ref01: ", _timerLoop);
             return false;
         }
         auto await_suspend(std::coroutine_handle<> coroutine) const noexcept {
-            print::println("this: ", this, " ref: ", _timerLoop);
             _it = _timerLoop->addTimer(_expireTime, coroutine);
         }
         void await_resume() const noexcept {
@@ -115,15 +83,14 @@ struct TimerLoop {
             return std::move(*this);
         }
         ~TimerAwaiter() noexcept {
-            print::println("del! this: ", this, " ref: ", _timerLoop);
-            if (_it.index() != UninitializedNonVoidVariantNpos) {
-                _timerLoop->_timerTree.erase(_it.get<TimerTree::iterator, ExceptionMode::Nothrow>());
+            if (_it) {
+                _timerLoop->_timerTree.erase(*_it);
             }
         }
     private:
         TimerLoop* _timerLoop;
         std::chrono::system_clock::time_point _expireTime;  // 过期时间
-        mutable UninitializedNonVoidVariant<TimerTree::iterator> _it;     // 红黑树迭代器
+        mutable std::optional<TimerTree::iterator> _it;     // 红黑树迭代器
     };
 private:
     struct [[nodiscard]] TimerAwaiterBuilder {
@@ -137,17 +104,17 @@ private:
          * @brief 暂停一段时间
          * @param duration 比如 3s
          */
-        TimerAwaiter&& sleepFor(std::chrono::system_clock::duration duration) && {
-            return std::move(TimerAwaiter{_timerLoop}.setExpireTime(
-                std::chrono::system_clock::now() + duration));
+        TimerAwaiter sleepFor(std::chrono::system_clock::duration duration) && {
+            return TimerAwaiter{_timerLoop}.setExpireTime(
+                std::chrono::system_clock::now() + duration);
         }
         /**
          * @brief 暂停指定时间点
          * @param timerLoop 计时器循环对象
          * @param expireTime 时间点, 如 2024-8-4 22:12:23
          */
-        TimerAwaiter&& sleepUntil(std::chrono::system_clock::time_point expireTime) && {
-            return std::move(TimerAwaiter{_timerLoop}.setExpireTime(expireTime));
+        TimerAwaiter sleepUntil(std::chrono::system_clock::time_point expireTime) && {
+            return TimerAwaiter{_timerLoop}.setExpireTime(expireTime);
         }
         TimerLoop* _timerLoop;
     };
