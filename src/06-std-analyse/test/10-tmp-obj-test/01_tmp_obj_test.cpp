@@ -7,6 +7,10 @@ struct PrintMan {
         print::println("man!");
     }
 
+    PrintMan&& set() && {
+        return std::move(*this);
+    }
+
     ~PrintMan() noexcept {
         print::println("~PrintMan");
     }
@@ -29,6 +33,10 @@ struct A {
         return {};
     }
 
+    PrintMan&& build() && {
+        return PrintMan{}.set();
+    }
+
     ~A() noexcept {
         print::println("~A");
     }
@@ -36,6 +44,10 @@ struct A {
 
 A makeA() {
     return A{};
+}
+
+void link(PrintMan pm) {
+    pm.man();
 }
 
 int main() {
@@ -54,7 +66,9 @@ int main() {
     A::fk(A{}).man();
     print::println("==============");
     makeA().cb()().man();
-    print::println("==============");
     // 生命周期都在一行内, 不管是 move 到内部了还是怎么样, 根生命周期应该都是在这一行!
+    print::println("==============");
+    link(makeA().build());
+    print::println("==============");
     return 0;
 }

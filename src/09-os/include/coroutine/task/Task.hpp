@@ -23,7 +23,12 @@
 #include <coroutine/awaiter/ExitAwaiter.hpp>
 #include <coroutine/promise/Promise.hpp>
 
+// @debug
+#include <HXprint/print.h>
+
 namespace HX {
+
+inline static int cnt = 0; // @debug
 
 template <
     typename T = void,
@@ -35,16 +40,28 @@ struct [[nodiscard]] Task {
 
     constexpr Task(std::coroutine_handle<promise_type> h = nullptr)
         : _handle(h)
-    {}
-
-    ~Task() { 
-        if (_handle) {
-            _handle.destroy();
-        } 
+    {
+        ++cnt;
+        print::println("make task: ", cnt, " ", this);
     }
 
-    Task(Task&&) noexcept = default;
-    Task& operator=(Task&&) noexcept = default;
+    ~Task() noexcept {
+        print::println("del ~Task ", this, " | ", _handle.address(), " cnt: ", cnt);
+        if (_handle) {
+            _handle.destroy();
+        }
+    }
+
+    Task(Task&& that) : _handle(that._handle) {
+        ++cnt;
+        print::println("make task(&&): ", cnt, " ", this);
+        that._handle = nullptr;
+    }
+
+    Task &operator=(Task&& that) noexcept {
+        std::swap(_handle, that._handle);
+        return *this;
+    }
 
     Task(Task const&) noexcept = delete;
     Task& operator=(Task const&) noexcept = delete;
@@ -56,6 +73,10 @@ struct [[nodiscard]] Task {
     constexpr operator std::coroutine_handle<>() const noexcept {
         return _handle;
     }
+
+    // constexpr std::coroutine_handle<promise_type> getPromise() const noexcept {
+    //     return _handle;
+    // }
 
 private:
     std::coroutine_handle<promise_type> _handle;

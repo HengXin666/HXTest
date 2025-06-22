@@ -21,7 +21,7 @@
 // #pragma comment(lib, "Mswsock.lib")
 
 namespace HX {
-
+    
 void* checkWinError(void* data) {
     if (!data) {
         HX::print::println("Error: ", ::GetLastError());
@@ -46,11 +46,17 @@ DWORD toDwMilliseconds(std::chrono::system_clock::duration dur) {
 }
 
 struct AioTask : public ::OVERLAPPED {
+    enum class State {
+        Normal,
+        Cancel = 1,
+    };
+
     AioTask(HANDLE iocpHandle, std::unordered_set<::HANDLE>& runingHandle) noexcept
         : _iocpHandle{iocpHandle}
         , _runingHandle{runingHandle}
     {
         ::memset(this, 0, sizeof(OVERLAPPED)); // 必须初始化 OVERLAPPED
+        _state = State::Cancel; // 默认是取消
     }
 #if 1 // 注意: 不能存在`移动`, 否则 IoUring::makeAioTask 返回就是 构造的新对象; 屏蔽了移动, 反而是编译器优化!
       // 得写移动, 不然无法在 MSVC 上通过编译 对于 HX::whenAny
@@ -70,6 +76,7 @@ struct AioTask : public ::OVERLAPPED {
             _task->_res = -ENOSYS;
         }
         constexpr uint64_t await_resume() const noexcept {
+            _task->_state = State::Normal;
             return _task->_res;
         }
         AioTask* _task;
@@ -88,6 +95,7 @@ private:
     };
     std::reference_wrapper<std::unordered_set<::HANDLE>> _runingHandle;
     std::coroutine_handle<> _previous;
+    State _state; // 状态
 
     void associateHandle(HANDLE h) & {
         auto&& runingHandleRef = _runingHandle.get();
@@ -101,6 +109,40 @@ private:
         }
         runingHandleRef.insert(h);
     }
+
+    struct __hx_func__ {
+        __hx_func__(AioTask* self, TimerLoop::TimerAwaiter&& timerTask)
+            : _self{self}
+            , _timerTask{std::move(timerTask)}
+        {}
+
+        __hx_func__(__hx_func__&&) = default;
+        __hx_func__& operator=(__hx_func__&&) noexcept = default;
+
+        Task<> operator()() {
+            co_await _timerTask;
+            _self->_state = State::Normal;
+            bool ok = ::PostQueuedCompletionStatus(
+                _self->_iocpHandle,
+                0,
+                0,
+                static_cast<::OVERLAPPED*>(_self)
+            );
+            if (!ok) [[unlikely]] {
+                print::println("error: ", ::GetLastError());
+                throw std::runtime_error{"PostQueuedCompletionStatus ERROR: " 
+                    + std::to_string(::GetLastError())};
+            }
+            co_return;
+        }
+        ~__hx_func__() noexcept {
+            print::println("~__hx_func__");
+        }
+    private:
+        friend AioTask;
+        AioTask* _self;
+        TimerLoop::TimerAwaiter _timerTask;
+    };
 public:
     // IO 操作 ...
     // https://learn.microsoft.com/zh-cn/windows/win32/fileio/i-o-completion-ports
@@ -471,8 +513,7 @@ int WSASend(
      * @param flags 
      * @return AioTask&& 
      */
-    [[nodiscard]] Task<> prepLinkTimeout(
-        HANDLE fd,
+    [[nodiscard]] __hx_func__ prepLinkTimeout(
         TimerLoop::TimerAwaiter timerTask // 获得所有权, 此时 timerTask 生命周期由协程接管
     ) && {
         // ::io_uring_prep_link_timeout(_sqe, ts, flags);
@@ -486,25 +527,18 @@ BOOL PostQueuedCompletionStatus(
         // 但是之前的 OVERLAPPED 也会被 iocp 取出! 因此我们需要自己标记一下 ... 写个状态机 ...
 );
         */
-        co_await timerTask;
-        bool ok = ::PostQueuedCompletionStatus(
-            fd,
-            0,
-            0,
-            static_cast<::OVERLAPPED*>(this)
-        );
-        if (!ok) [[unlikely]] {
-            throw std::runtime_error{"PostQueuedCompletionStatus ERROR: " 
-                + std::to_string(::GetLastError())};
-        }
-        co_return;
+        return {this, std::move(timerTask)};
     }
 
     [[nodiscard]] inline static auto linkTimeout(
         AioTask&& task, 
-        Task<>&& timeoutTask
+        __hx_func__&& timeoutTask
     ) {
-        return whenAny(std::move(task), std::move(timeoutTask));
+        timeoutTask._self->_iocpHandle = task._iocpHandle;
+
+        // 为什么此处的 Task<> 会析构? 不是传入 whenAny 了吗?
+        auto t = timeoutTask();
+        return whenAny(std::move(task), std::move(t));
     }
 
     ~AioTask() noexcept {
@@ -573,6 +607,8 @@ BOOL GetQueuedCompletionStatusEx(
         for (ULONG i = 0; i < n; ++i) {
             auto ptr = arr[i];
             auto task = reinterpret_cast<AioTask*>(ptr.lpOverlapped);
+            if (task->_state == AioTask::State::Cancel)
+                continue;
             task->_res = ptr.dwNumberOfBytesTransferred;
             _tasks.push_back(task->_previous);
         }
@@ -657,7 +693,6 @@ private:
                         0
                     ),
                     _iocp.makeAioTask().prepLinkTimeout(
-                        hStdin,
                         makeTimer().sleepFor(3s)
                     )
                 );
