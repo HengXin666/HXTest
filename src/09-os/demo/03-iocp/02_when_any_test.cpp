@@ -110,16 +110,16 @@ private:
         runingHandleRef.insert(h);
     }
 
-    struct __hx_func__ {
-        __hx_func__(AioTask&& self, TimerLoop::TimerAwaiter&& timerTask)
+    struct _AioTimeoutTask {
+        _AioTimeoutTask(AioTask&& self, TimerLoop::TimerAwaiter&& timerTask)
             : _self{std::make_unique<AioTask>(std::move(self))}
             , _timerTask{std::move(timerTask)}
         {
             print::println("__hx_func__");
         }
 
-        __hx_func__(__hx_func__&&) = default;
-        __hx_func__& operator=(__hx_func__&&) noexcept = default;
+        _AioTimeoutTask(_AioTimeoutTask&&) = default;
+        _AioTimeoutTask& operator=(_AioTimeoutTask&&) noexcept = default;
 
         Task<> co() {
             struct _del_print_ {
@@ -135,7 +135,7 @@ private:
             _self->_state = State::Normal;
             co_return;
         }
-        ~__hx_func__() noexcept {
+        ~_AioTimeoutTask() noexcept {
             print::println("~__hx_func__");
         }
     private:
@@ -164,7 +164,7 @@ public:
      * @param flags 
      * @return AioTask&& 
      */
-    [[nodiscard]] __hx_func__ prepLinkTimeout(
+    [[nodiscard]] _AioTimeoutTask prepLinkTimeout(
         TimerLoop::TimerAwaiter&& timerTask // 获得所有权, 此时 timerTask 生命周期由协程接管
     ) && {
         return {std::move(*this), std::move(timerTask)};
@@ -172,7 +172,7 @@ public:
 
     [[nodiscard]] inline static auto linkTimeout(
         AioTask&& task, 
-        __hx_func__&& timeoutTask
+        _AioTimeoutTask&& timeoutTask
     ) {
         // 为什么不能是捕获?
 #if 0
@@ -183,7 +183,7 @@ public:
             co_return co_await whenAny(std::move(_task), _timeoutTask.co());
         }();
 #else
-        return [](AioTask&& _task,  __hx_func__&& _timeoutTask) mutable 
+        return [](AioTask&& _task,  _AioTimeoutTask&& _timeoutTask) mutable 
         -> Task<HX::AwaiterReturnValue<decltype(whenAny(std::move(task), timeoutTask.co()))>> {
             _timeoutTask._self->_iocpHandle = _task._iocpHandle;
             co_return co_await whenAny(std::move(_task), _timeoutTask.co());

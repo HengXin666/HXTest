@@ -23,12 +23,7 @@
 #include <coroutine/awaiter/ExitAwaiter.hpp>
 #include <coroutine/promise/Promise.hpp>
 
-// @debug
-#include <HXprint/print.h>
-
 namespace HX {
-
-inline static int cnt = 0; // @debug
 
 template <
     typename T = void,
@@ -40,26 +35,20 @@ struct [[nodiscard]] Task {
 
     constexpr Task(std::coroutine_handle<promise_type> h = nullptr)
         : _handle(h)
-    {
-        ++cnt;
-        print::println("make task: ", cnt, " ", this, " h = ", h.address());
-    }
+    {}
 
     ~Task() noexcept {
-        print::println("del ~Task ", this, " | ", _handle.address(), " cnt: ", cnt);
         if (_handle) {
             _handle.destroy();
-        }    }
+        }
+    }
 
     Task(Task&& that) : _handle(that._handle) {
-        ++cnt;
-        print::println("make task(&&): ", cnt, " ", this);
         that._handle = nullptr;
     }
 
     Task &operator=(Task&& that) noexcept {
         std::swap(_handle, that._handle);
-        print::println("Task &operator=(Task&& that) ", cnt, " ", this);
         return *this;
     }
 

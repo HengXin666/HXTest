@@ -56,7 +56,6 @@ struct AioTask : public ::OVERLAPPED {
         , _runingHandle{runingHandle}
     {
         ::memset(this, 0, sizeof(OVERLAPPED)); // 必须初始化 OVERLAPPED
-        _state = State::Cancel; // 默认是取消
     }
 #if 1 // 注意: 不能存在`移动`, 否则 IoUring::makeAioTask 返回就是 构造的新对象; 屏蔽了移动, 反而是编译器优化!
       // 得写移动, 不然无法在 MSVC 上通过编译 对于 HX::whenAny
@@ -76,7 +75,6 @@ struct AioTask : public ::OVERLAPPED {
             _task->_res = -ENOSYS;
         }
         constexpr uint64_t await_resume() const noexcept {
-            _task->_state = State::Normal;
             return _task->_res;
         }
         AioTask* _task;
@@ -95,14 +93,13 @@ private:
     };
     std::reference_wrapper<std::unordered_set<::HANDLE>> _runingHandle;
     std::coroutine_handle<> _previous;
-    State _state; // 状态
 
     void associateHandle(HANDLE h) & {
         auto&& runingHandleRef = _runingHandle.get();
         if (runingHandleRef.count(h))
             return;
         if (!::CreateIoCompletionPort(
-            h, _iocpHandle, (ULONG_PTR)h, 0) 
+            h, _iocpHandle, static_cast<ULONG_PTR>(State::Normal), 0) 
             && ::GetLastError() != ERROR_INVALID_PARAMETER
         ) {
             throw std::runtime_error{std::to_string(::GetLastError())};
@@ -110,44 +107,38 @@ private:
         runingHandleRef.insert(h);
     }
 
-    struct __hx_func__ {
-        __hx_func__(AioTask&& self, TimerLoop::TimerAwaiter&& timerTask)
+    struct _AioTimeoutTask {
+        _AioTimeoutTask(AioTask&& self, TimerLoop::TimerAwaiter&& timerTask)
             : _self{std::make_unique<AioTask>(std::move(self))}
             , _timerTask{std::move(timerTask)}
-        {
-            print::println("__hx_func__");
-        }
+        {}
 
-        __hx_func__(__hx_func__&&) = default;
-        __hx_func__& operator=(__hx_func__&&) noexcept = default;
+        _AioTimeoutTask(_AioTimeoutTask&&) = default;
+        _AioTimeoutTask& operator=(_AioTimeoutTask&&) noexcept = default;
 
         Task<> co() {
-            struct _del_print_ {
-                _del_print_() {
-                    print::println("_del_print_ begin {");
-                }
-
-                ~_del_print_() noexcept {
-                    print::println("} // _del_print_ end");
-                }
-            } _;
             co_await _timerTask;
-            _self->_state = State::Normal;
+            /*
+BOOL PostQueuedCompletionStatus(
+    HANDLE       CompletionPort,                // 目标完成端口的句柄
+    DWORD        dwNumberOfBytesTransferred,    // 自定义的字节数, 可用于传递信息
+    ULONG_PTR    dwCompletionKey,               // 自定义的完成键, 可用于区分不同的操作或I/O源
+    LPOVERLAPPED lpOverlapped                   // OVERLAPPED结构的指针
+        // 注: GetQueuedCompletionStatusEx 拿到的是 此处的 OVERLAPPED
+        // 但是之前的 OVERLAPPED 也会被 iocp 取出! 因此我们需要自己标记一下 ... 写个状态机 ...
+);
+            */
             bool ok = ::PostQueuedCompletionStatus(
                 _self->_iocpHandle,
                 0,
-                0,
+                static_cast<ULONG_PTR>(State::Cancel),
                 static_cast<::OVERLAPPED*>(_self.get())
             );
             if (!ok) [[unlikely]] {
-                print::println("error: ", ::GetLastError());
                 throw std::runtime_error{"PostQueuedCompletionStatus ERROR: " 
                     + std::to_string(::GetLastError())};
             }
             co_return;
-        }
-        ~__hx_func__() noexcept {
-            print::println("~__hx_func__");
         }
     private:
         friend AioTask;
@@ -524,28 +515,18 @@ int WSASend(
      * @param flags 
      * @return AioTask&& 
      */
-    [[nodiscard]] __hx_func__ prepLinkTimeout(
-        TimerLoop::TimerAwaiter timerTask // 获得所有权, 此时 timerTask 生命周期由协程接管
+    [[nodiscard]] _AioTimeoutTask prepLinkTimeout(
+        TimerLoop::TimerAwaiter&& timerTask
     ) && {
         // ::io_uring_prep_link_timeout(_sqe, ts, flags);
-        /*
-BOOL PostQueuedCompletionStatus(
-    HANDLE       CompletionPort,                // 目标完成端口的句柄
-    DWORD        dwNumberOfBytesTransferred,    // 自定义的字节数, 可用于传递信息
-    ULONG_PTR    dwCompletionKey,               // 自定义的完成键, 可用于区分不同的操作或I/O源
-    LPOVERLAPPED lpOverlapped                   // OVERLAPPED结构的指针
-        // 注: GetQueuedCompletionStatusEx 拿到的是 此处的 OVERLAPPED
-        // 但是之前的 OVERLAPPED 也会被 iocp 取出! 因此我们需要自己标记一下 ... 写个状态机 ...
-);
-        */
         return {std::move(*this), std::move(timerTask)};
     }
 
     [[nodiscard]] inline static auto linkTimeout(
         AioTask&& task, 
-        __hx_func__&& timeoutTask
+        _AioTimeoutTask&& timeoutTask
     ) {
-        return [](AioTask&& _task,  __hx_func__&& _timeoutTask) mutable 
+        return [](AioTask&& _task,  _AioTimeoutTask&& _timeoutTask) mutable 
         -> Task<HX::AwaiterReturnValue<decltype(whenAny(std::move(task), timeoutTask.co()))>> {
             _timeoutTask._self->_iocpHandle = _task._iocpHandle;
             co_return co_await whenAny(std::move(_task), _timeoutTask.co());
@@ -574,6 +555,12 @@ struct Iocp {
         return {_iocpHandle, _runingHandle};
     }
 
+    /**
+     * @brief 是否还有任务在等待
+     * @warning 如果您发现您卡在这里, 那么请检查是否有 fd 没有被 close!
+     * @return true 还有任务
+     * @return false 无任务
+     */
     bool isRun() const {
         return _runingHandle.size();
     }
@@ -618,7 +605,7 @@ BOOL GetQueuedCompletionStatusEx(
         for (ULONG i = 0; i < n; ++i) {
             auto ptr = arr[i];
             auto task = reinterpret_cast<AioTask*>(ptr.lpOverlapped);
-            if (task->_state == AioTask::State::Cancel)
+            if (ptr.lpCompletionKey == static_cast<ULONG_PTR>(AioTask::State::Cancel))
                 continue;
             task->_res = ptr.dwNumberOfBytesTransferred;
             _tasks.push_back(task->_previous);
@@ -710,6 +697,7 @@ private:
                 print::println("res: ", res.index());
                 if (res.index() == 1) {
                     print::print("超时了~");
+                    co_await _iocp.makeAioTask().prepClose(hStdin);
                     co_return;
                 }
             } catch (std::exception& e) {
@@ -792,5 +780,6 @@ int main() {
     Loop loop;
     loop.start();
     // constexpr bool _ = AwaitableLike<Task<>>; 
+    HX::print::println("END: main");
     return 0;
 }
