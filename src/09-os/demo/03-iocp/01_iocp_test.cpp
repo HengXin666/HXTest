@@ -526,7 +526,7 @@ int WSASend(
         AioTask&& task, 
         _AioTimeoutTask&& timeoutTask
     ) {
-        return [](AioTask&& _task,  _AioTimeoutTask&& _timeoutTask) mutable 
+        return [](AioTask&& _task,  _AioTimeoutTask&& _timeoutTask) 
         -> Task<HX::AwaiterReturnValue<decltype(whenAny(std::move(task), timeoutTask.co()))>> {
             _timeoutTask._self->_iocpHandle = _task._iocpHandle;
             co_return co_await whenAny(std::move(_task), _timeoutTask.co());

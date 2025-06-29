@@ -174,16 +174,20 @@ public:
         AioTask&& task, 
         _AioTimeoutTask&& timeoutTask
     ) {
-        // 为什么不能是捕获?
+        // 为什么不能是捕获? 难道是因为对于协程函数, 你的类捕获不会算入协程生命周期?!
+        // 对的对的, 就是这样! 这个 []()() 得到的是协程对象了, 仅有传参的会算入生命周期
+        // 但是捕获的话, 作为类的成员, 在 []() 时候是有效的
+        // 但是 []()() 是创建一个协程对象, 然后 return 了, 因此 [...]() 捕获的就析构了
+        // 所以会悬挂引用 (ub), 导致野指针 qwq...
 #if 0
         return [_task = std::move(task), 
                 _timeoutTask = std::move(timeoutTask)]() mutable 
         -> Task<HX::AwaiterReturnValue<decltype(whenAny(std::move(task), timeoutTask.co()))>> {
-            _timeoutTask._self->_iocpHandle = _task._iocpHandle;
+            _timeoutTask._self->_iocpHandle = _task._iocpHandle; // 出错
             co_return co_await whenAny(std::move(_task), _timeoutTask.co());
         }();
 #else
-        return [](AioTask&& _task,  _AioTimeoutTask&& _timeoutTask) mutable 
+        return [](AioTask&& _task,  _AioTimeoutTask&& _timeoutTask) 
         -> Task<HX::AwaiterReturnValue<decltype(whenAny(std::move(task), timeoutTask.co()))>> {
             _timeoutTask._self->_iocpHandle = _task._iocpHandle;
             co_return co_await whenAny(std::move(_task), _timeoutTask.co());
