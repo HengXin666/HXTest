@@ -83,15 +83,17 @@ Task<std::coroutine_handle<>, WhenAnyPromise> start(
 ) {
     if constexpr (Awaiter<T>) {
         if constexpr (std::is_void_v<decltype(t.await_resume())>) {
-            co_await t;
+            static_cast<void>(co_await t);
+            res.template emplace<Idx>();
         } else {
-            HX::get<Idx>(res) = std::move(co_await t);
+            res.emplace<Idx>(co_await t);
         }
     } else if constexpr (Awaitable<T>) {
         if constexpr (std::is_void_v<decltype(t.operator co_await().await_resume())>) {
-            co_await t;
+            static_cast<void>(co_await t);
+            res.template emplace<Idx>();
         } else {
-            HX::get<Idx>(res) = std::move(co_await t);
+            res.emplace<Idx>(co_await t);
         }
     } else {
         static_assert(sizeof(T) < 0, "The type is not Awaiter");
@@ -126,7 +128,7 @@ Task<ResType> whenAny(std::index_sequence<Idx...>, Ts&&... ts) {
 } // namespace internal
 
 template <AwaitableLike... Ts>
-auto whenAny(Ts&&... ts) {
+[[nodiscard]] auto whenAny(Ts&&... ts) {
     return internal::whenAny(
         std::make_index_sequence<sizeof...(ts)>(), 
         std::forward<Ts>(ts)...

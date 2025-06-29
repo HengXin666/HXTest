@@ -111,22 +111,33 @@ private:
     }
 
     struct __hx_func__ {
-        __hx_func__(AioTask* self, TimerLoop::TimerAwaiter&& timerTask)
-            : _self{self}
+        __hx_func__(AioTask&& self, TimerLoop::TimerAwaiter&& timerTask)
+            : _self{std::make_unique<AioTask>(std::move(self))}
             , _timerTask{std::move(timerTask)}
-        {}
+        {
+            print::println("__hx_func__");
+        }
 
         __hx_func__(__hx_func__&&) = default;
         __hx_func__& operator=(__hx_func__&&) noexcept = default;
 
-        Task<> operator()() {
+        Task<> co() {
+            struct _del_print_ {
+                _del_print_() {
+                    print::println("_del_print_ begin {");
+                }
+
+                ~_del_print_() noexcept {
+                    print::println("} // _del_print_ end");
+                }
+            } _;
             co_await _timerTask;
             _self->_state = State::Normal;
             bool ok = ::PostQueuedCompletionStatus(
                 _self->_iocpHandle,
                 0,
                 0,
-                static_cast<::OVERLAPPED*>(_self)
+                static_cast<::OVERLAPPED*>(_self.get())
             );
             if (!ok) [[unlikely]] {
                 print::println("error: ", ::GetLastError());
@@ -140,7 +151,7 @@ private:
         }
     private:
         friend AioTask;
-        AioTask* _self;
+        std::unique_ptr<AioTask> _self;
         TimerLoop::TimerAwaiter _timerTask;
     };
 public:
@@ -527,18 +538,18 @@ BOOL PostQueuedCompletionStatus(
         // 但是之前的 OVERLAPPED 也会被 iocp 取出! 因此我们需要自己标记一下 ... 写个状态机 ...
 );
         */
-        return {this, std::move(timerTask)};
+        return {std::move(*this), std::move(timerTask)};
     }
 
     [[nodiscard]] inline static auto linkTimeout(
         AioTask&& task, 
         __hx_func__&& timeoutTask
     ) {
-        timeoutTask._self->_iocpHandle = task._iocpHandle;
-
-        // 为什么此处的 Task<> 会析构? 不是传入 whenAny 了吗?
-        auto t = timeoutTask();
-        return whenAny(std::move(task), std::move(t));
+        return [](AioTask&& _task,  __hx_func__&& _timeoutTask) mutable 
+        -> Task<HX::AwaiterReturnValue<decltype(whenAny(std::move(task), timeoutTask.co()))>> {
+            _timeoutTask._self->_iocpHandle = _task._iocpHandle;
+            co_return co_await whenAny(std::move(_task), _timeoutTask.co());
+        }(std::move(task), std::move(timeoutTask));
     }
 
     ~AioTask() noexcept {
@@ -693,7 +704,7 @@ private:
                         0
                     ),
                     _iocp.makeAioTask().prepLinkTimeout(
-                        makeTimer().sleepFor(3s)
+                        makeTimer().sleepFor(5s)
                     )
                 );
                 print::println("res: ", res.index());

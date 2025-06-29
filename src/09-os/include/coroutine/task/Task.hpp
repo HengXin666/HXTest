@@ -42,15 +42,14 @@ struct [[nodiscard]] Task {
         : _handle(h)
     {
         ++cnt;
-        print::println("make task: ", cnt, " ", this);
+        print::println("make task: ", cnt, " ", this, " h = ", h.address());
     }
 
     ~Task() noexcept {
         print::println("del ~Task ", this, " | ", _handle.address(), " cnt: ", cnt);
         if (_handle) {
             _handle.destroy();
-        }
-    }
+        }    }
 
     Task(Task&& that) : _handle(that._handle) {
         ++cnt;
@@ -60,6 +59,7 @@ struct [[nodiscard]] Task {
 
     Task &operator=(Task&& that) noexcept {
         std::swap(_handle, that._handle);
+        print::println("Task &operator=(Task&& that) ", cnt, " ", this);
         return *this;
     }
 

@@ -63,7 +63,6 @@ struct ExitAwaiter {
     std::coroutine_handle<promise_type> _coroutine;
 };
 
-
 } // namespace HX
 
 #endif // !_HX_EXIT_AWAITER_H_
