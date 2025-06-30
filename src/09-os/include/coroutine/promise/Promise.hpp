@@ -29,11 +29,21 @@
 
 namespace HX {
 
+/**
+ * @brief 协程控制体
+ * @tparam T 返回类型
+ * @tparam Init 初始化体 (initial_suspend)
+ * @tparam Dele 删除体 (final_suspend)
+ */
 template <
     typename T, 
-    typename Init = StopAwaiter<true>
+    typename Init = StopAwaiter<true>,
+    typename Dele = PreviousAwaiter
 >
 struct Promise {
+    using InitStrategy = Init;
+    using DeleStrategy = Dele;
+
     Init initial_suspend() noexcept { return {}; }
     
     auto get_return_object() noexcept {
@@ -41,7 +51,11 @@ struct Promise {
     }
     
     auto final_suspend() noexcept { 
-        return PreviousAwaiter{_previous}; 
+        if constexpr (requires { Dele{_previous}; }) {
+            return Dele{_previous}; 
+        } else {
+            return Dele{};
+        }
     }
 
     void return_value(T const& value) {
@@ -59,8 +73,13 @@ struct Promise {
     }
 
     auto yield_value(T&& value) {
-        _value.putVal(value);
-        return StopAwaiter<true>{};
+        _value.set(std::move(value));
+        return PreviousAwaiter{_previous};
+    }
+
+    auto yield_value(T const& value) {
+        _value.set(value);
+        return PreviousAwaiter{_previous};
     }
 
     T result() {
@@ -82,8 +101,11 @@ private:
     Uninitialized<T> _value;
 };
 
-template <typename Init>
-struct Promise<void, Init> {
+template <typename Init, typename Dele>
+struct Promise<void, Init, Dele> {
+    using InitStrategy = Init;
+    using DeleStrategy = Dele;
+
     Init initial_suspend() noexcept { return {}; }
 
     auto get_return_object() noexcept {
@@ -91,7 +113,11 @@ struct Promise<void, Init> {
     }
 
     auto final_suspend() noexcept { 
-        return PreviousAwaiter{_previous}; 
+        if constexpr (requires { Dele{_previous}; }) {
+            return Dele{_previous}; 
+        } else {
+            return Dele{};
+        }
     }
 
     void return_void() { }

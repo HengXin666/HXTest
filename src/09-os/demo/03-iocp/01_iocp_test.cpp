@@ -13,6 +13,7 @@
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
 #include <WinSock2.h>
 #include <MSWSock.h>
 #include <Windows.h>
@@ -195,51 +196,56 @@ WSARecv: 从已连接的套接字接收数据, 支持 OVERLAPPED 结构实现异
      * @param flags 
      * @return AioTask&& 
      */
-    [[nodiscard]] AioTask&& prepSocket(
+    [[nodiscard]] Task<SOCKET> prepSocket(
         int domain, 
         int type, 
         int protocol,
         unsigned int flags
     ) && {
         // ::io_uring_prep_socket(_sqe, domain, type, protocol, flags);
-        return std::move(*this);
+        auto socket = ::socket(domain, type, protocol);
+        if (socket == INVALID_SOCKET) [[unlikely]] {
+            throw std::runtime_error{"socket ERROR: " + std::to_string(::WSAGetLastError())};
+        }
+        co_return socket;
     }
 
     /**
      * @brief 异步建立连接
      * @param fd 服务端套接字
      * @param addr [out] 客户端信息
-     * @param addrlen [out] 客户端信息长度指针
      * @param flags 
      * @return AioTask&& 
      */
     [[nodiscard]] AioTask&& prepAccept(
-        SOCKET fd, 
-        struct ::sockaddr *addr, 
-        // ::socklen_t *addrlen,
+        SOCKET serSocket,
+        struct ::sockaddr* addr, 
+        // ::socklen_t *addrlen, // 内部决定
         int flags
     ) && {
         // ::io_uring_prep_accept(_sqe, fd, addr, addrlen, flags);
         /*
 BOOL AcceptEx(
   [in]  SOCKET sListenSocket,         // 监听的socket <服务端套接字>
-  [in]  SOCKET sAcceptSocket,         // 客户端套接字，必须是通过socket函数创建的，未绑定的套接字
+  [in]  SOCKET sAcceptSocket,         // 客户端套接字, 必须是通过socket函数创建的，未绑定的套接字
   [out] PVOID lpOutputBuffer,         // 用来接收首批数据及存储两个sockaddr结构的缓冲区
-  [in]  DWORD dwReceiveDataLength,    // 在首次接受的数据中期望读取的字节数，如果为0，则表示不接收数据
-  [in]  DWORD dwLocalAddressLength,   // 本地地址sockaddr结构的大小，此值必须至少比正在使用的传输协议的最大地址长度多16个字节
-  [in]  DWORD dwRemoteAddressLength,  // 远程地址sockaddr结构的大小，此值必须至少比正在使用的传输协议的最大地址长度多16个字节
+  [in]  DWORD dwReceiveDataLength,    // 在首次接受的数据中期望读取的字节数, 如果为0, 则表示不接收数据
+  [in]  DWORD dwLocalAddressLength,   // 本地地址sockaddr结构的大小, 此值必须至少比正在使用的传输协议的最大地址长度多16个字节
+  [in]  DWORD dwRemoteAddressLength,  // 远程地址sockaddr结构的大小, 此值必须至少比正在使用的传输协议的最大地址长度多16个字节
   [out] LPDWORD lpdwBytesReceived,    // 实际接收到的字节数
-  [in, out] LPOVERLAPPED lpOverlapped // 指向OVERLAPPED结构的指针，用于异步操作
+  [in, out] LPOVERLAPPED lpOverlapped // 指向OVERLAPPED结构的指针, 用于异步操作
 );
         */
-        associateHandle(reinterpret_cast<HANDLE>(fd));
+        // @todo 此处似乎仅支持 ipv4, ipv6 得想其他办法, 比如用宏
         // √8 iocp 和 AcceptEx 的设计... 居然要我们自己传入 new 的客户端套接字...
-        SOCKET cliSocket = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        auto cliSocket = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (cliSocket == INVALID_SOCKET) [[unlikely]] {
             throw std::runtime_error{"socket ERROR: " + std::to_string(::WSAGetLastError())};
         }
+        associateHandle(reinterpret_cast<HANDLE>(cliSocket));
+        
         bool ok = ::AcceptEx(
-            fd,
+            serSocket,
             cliSocket,
             nullptr,
             0,
@@ -632,7 +638,7 @@ private:
 
 struct Loop {
     void start() {
-        auto tasks = test1();
+        auto tasks = test4();
         static_cast<std::coroutine_handle<>>(tasks).resume();
         while (true) {
             auto timeout = _timerLoop.run();
@@ -755,6 +761,45 @@ private:
             makeTimer().sleepFor(120s)
         );
         print::println("才等了 1s...");
+    }
+
+    // 测试网络请求
+    Task<> test4() {
+        // 1. 等待连接
+        auto serSocket 
+            = co_await _iocp.makeAioTask()
+                            .prepSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, 0);
+
+        sockaddr_in addr;
+        addr.sin_family = AF_INET;   // 地址为IPv4协议
+        addr.sin_port = htons(28205); // 端口为 28205
+        addr.sin_addr.S_un.S_addr = inet_addr("127.0.0.1"); // 具体绑定本机的地址
+
+        if (::bind(serSocket, reinterpret_cast<::sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR) [[unlikely]] {
+            throw std::runtime_error{"bind error!"};
+        }
+
+        if (::listen(serSocket, 64) == SOCKET_ERROR) [[unlikely]] {
+            throw std::runtime_error{"listen error!"};
+        }
+
+        while (true) {
+            auto res = co_await _iocp.makeAioTask().prepAccept(serSocket, nullptr, 0);
+            // 2. func: 仅处理连接, 需要分离协程
+            /*
+            期望调度:
+            1)
+                根协程 -> prepAccept 协程 -> 得到 cliSocket -> 创建 cli协程
+
+            2)
+                根协程 -> prepAccept 协程
+                根协程 -> cli协程
+            */
+            (void)res; // 一个未启动的协程对象, move 到挂载队列
+                       // 由队列统一 resume
+                       // 难点在于生命周期的处理
+        }
+        co_return;
     }
 
     Iocp _iocp;

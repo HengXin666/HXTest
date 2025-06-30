@@ -26,8 +26,11 @@ namespace HX {
 
 /**
  * @brief 默认的协程控制: 在协程挂起(`co_await`)时会退出整个协程链条
+ * @tparam T 协程返回值
+ * @tparam P 协程 `promise_type`
+ * @tparam IsStop 启动时候是否暂停 (默认为 `true` (暂停))
  */
-template <typename T, typename P>
+template <typename T, typename P, bool IsStop = true>
 struct ExitAwaiter {
     using promise_type = P;
 
@@ -36,7 +39,7 @@ struct ExitAwaiter {
     {}
 
     bool await_ready() const noexcept { 
-        return false; 
+        return !IsStop; 
     }
 
     /**

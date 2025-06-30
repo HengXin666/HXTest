@@ -38,8 +38,12 @@ struct [[nodiscard]] Task {
     {}
 
     ~Task() noexcept {
-        if (_handle) {
-            _handle.destroy();
+        if constexpr (std::is_same_v<typename P::DeleStrategy, StopAwaiter<false>>) {
+            return;
+        } else {
+            if (_handle) {
+                _handle.destroy();
+            }
         }
     }
 

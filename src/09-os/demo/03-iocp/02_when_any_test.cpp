@@ -186,6 +186,16 @@ public:
             _timeoutTask._self->_iocpHandle = _task._iocpHandle; // 出错
             co_return co_await whenAny(std::move(_task), _timeoutTask.co());
         }();
+#elif 0
+        // 多余的, 因为即便优化了捕获; 也会因为外面是协程导致传参导致依旧在堆上分配
+        // 并且可能还会多分配一个 []() 对象; 反而原本的就比较完美了
+        using Res = HX::AwaiterReturnValue<decltype(whenAny(std::move(task), timeoutTask.co()))>;
+        return [_task = std::move(task), 
+                _timeoutTask = std::move(timeoutTask)]() mutable 
+        -> Task<Res, Promise<Res>, ExitAwaiter<Res, Promise<Res>, false>> {
+            _timeoutTask._self->_iocpHandle = _task._iocpHandle;
+            co_return co_await whenAny(std::move(_task), _timeoutTask.co());
+        }();
 #else
         return [](AioTask&& _task,  _AioTimeoutTask&& _timeoutTask) 
         -> Task<HX::AwaiterReturnValue<decltype(whenAny(std::move(task), timeoutTask.co()))>> {
