@@ -8,6 +8,7 @@
 #include <limits>
 
 #include <coroutine/task/Task.hpp>
+#include <coroutine/task/RootTask.hpp>
 #include <coroutine/awaiter/WhenAny.hpp>
 #include <coroutine/loop/TimerLoop.hpp>
 
@@ -18,8 +19,8 @@
 #include <MSWSock.h>
 #include <Windows.h>
 
-// #pragma comment(lib, "Ws2_32.lib")
-// #pragma comment(lib, "Mswsock.lib")
+#pragma comment(lib, "Ws2_32.lib")
+#pragma comment(lib, "Mswsock.lib")
 
 namespace HX {
     
@@ -763,8 +764,36 @@ private:
         print::println("才等了 1s...");
     }
 
-    // 测试网络请求
+    // 测试分离协程
     Task<> test4() {
+        using namespace std::chrono;
+        for (int i = 0; ; ++i) {
+            print::println("make id: ", i, " {");
+            test4_sub(i).detach();
+            print::println("} // make id: ", i);
+            co_await makeTimer().sleepFor(2s);
+        }
+        co_return;
+    }
+
+    RootTask<> test4_sub(int id) {
+        using namespace std::chrono;
+        struct __raii_test_ {
+            ~__raii_test_() noexcept {
+                print::println("~test4_sub(): , ", _id, "\n");
+            }
+
+            int _id;
+        } _{id};
+        for (int i = 0; i < 5; ++i) {
+            print::println("The ", id, " sleep (", i , ")");
+            co_await makeTimer().sleepFor(1s);
+        }
+        co_return;
+    }
+
+    // 测试网络请求
+    Task<> test5() {
         // 1. 等待连接
         auto serSocket 
             = co_await _iocp.makeAioTask()
@@ -783,8 +812,8 @@ private:
             throw std::runtime_error{"listen error!"};
         }
 
-        while (true) {
-            auto res = co_await _iocp.makeAioTask().prepAccept(serSocket, nullptr, 0);
+        for(;;) {
+            auto cliFd = co_await _iocp.makeAioTask().prepAccept(serSocket, nullptr, 0);
             // 2. func: 仅处理连接, 需要分离协程
             /*
             期望调度:
@@ -795,15 +824,21 @@ private:
                 根协程 -> prepAccept 协程
                 根协程 -> cli协程
             */
-            (void)res; // 一个未启动的协程对象, move 到挂载队列
-                       // 由队列统一 resume
-                       // 难点在于生命周期的处理
+            comm(cliFd).detach();
+        }
+        co_return;
+    }
+
+    RootTask<> comm(::SOCKET cliFd) {
+        for(;;) {
+            
         }
         co_return;
     }
 
     Iocp _iocp;
     TimerLoop _timerLoop;
+    // DispatchQueue<> _queue;
 };
 
 } // namespace HX

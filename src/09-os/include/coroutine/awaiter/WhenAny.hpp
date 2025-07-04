@@ -42,6 +42,9 @@ struct WhenAnyCtlBlock {
 };
 
 struct WhenAnyPromise {
+    using InitStrategy = std::suspend_always;
+    using DeleStrategy = HX::PreviousAwaiter;
+
     std::suspend_always initial_suspend() noexcept { return {}; }
     auto get_return_object() noexcept {
         return std::coroutine_handle<WhenAnyPromise>::from_promise(*this);

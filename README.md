@@ -78,3 +78,4 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
     - 03-iocp
         - [基于协程的IOCP简易框架](src/09-os/demo/03-iocp/01_iocp_test.cpp) 支持超时机制!
             - [TimerLoop](src/09-os/include/coroutine/loop/TimerLoop.hpp) 基于红黑树的协程定时器
+            - [RootTask](src/09-os/include/coroutine/task/RootTask.hpp) 可以被分离的协程, 独自成为根协程 (内部必需要有合法的 `co_await`, 否则无法挂起以继续原协程, 从而会导致分离的任务直接运行到结束)

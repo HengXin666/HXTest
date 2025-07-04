@@ -43,6 +43,7 @@ struct [[nodiscard]] Task {
         } else {
             if (_handle) {
                 _handle.destroy();
+                _handle = nullptr;
             }
         }
     }
