@@ -95,7 +95,7 @@ template <typename T, std::size_t N>
 struct ReflectionVisitor {
     static constexpr auto visit() {
         static_assert(
-            sizeof(T) < 0,
+            !sizeof(T),
             "\n\nThis error occurs for one of two reasons:\n\n"
             "1) You have created a struct with more than 255 fields, which is "
             "unsupported. \n\n"
@@ -105,7 +105,7 @@ struct ReflectionVisitor {
 
     static constexpr auto visit(T&) {
         static_assert(
-            sizeof(T) < 0,
+            !sizeof(T),
             "\n\nThis error occurs for one of two reasons:\n\n"
             "1) You have created a struct with more than 255 fields, which is "
             "unsupported. \n\n"
@@ -116,7 +116,7 @@ struct ReflectionVisitor {
     template <typename Visitor>
     static constexpr auto visit(T&, Visitor&&) {
         static_assert(
-            sizeof(T) < 0,
+            !sizeof(T),
             "\n\nThis error occurs for one of two reasons:\n\n"
             "1) You have created a struct with more than 255 fields, which is "
             "unsupported. \n\n"

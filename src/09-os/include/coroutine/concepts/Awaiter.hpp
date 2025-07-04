@@ -45,7 +45,7 @@ using AwaiterReturnValue = decltype([](auto t) {
     } else if constexpr (Awaitable<decltype(t)>) {
         return t.operator co_await().await_resume();
     } else {
-        static_assert(sizeof(T) < 0, "The type is not Awaiter");
+        static_assert(!sizeof(T), "The type is not Awaiter");
     }
 }(std::declval<T>()));
 

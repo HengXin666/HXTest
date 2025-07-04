@@ -126,7 +126,7 @@ template <class T, std::size_t n>
 struct object_tuple_view_helper {
     static constexpr auto tuple_view() {
         static_assert(
-            sizeof(T) < 0,
+            !sizeof(T),
             "\n\nThis error occurs for one of two reasons:\n\n"
             "1) You have created a struct with more than 100 fields, which is "
             "unsupported. \n\n"
@@ -135,7 +135,7 @@ struct object_tuple_view_helper {
 
     static constexpr auto tuple_view(T &) {
         static_assert(
-            sizeof(T) < 0,
+            !sizeof(T),
             "\n\nThis error occurs for one of two reasons:\n\n"
             "1) You have created a struct with more than 100 fields, which is "
             "unsupported. \n\n"
@@ -145,7 +145,7 @@ struct object_tuple_view_helper {
     template <typename Visitor>
     static constexpr decltype(auto) tuple_view(T &&, Visitor &&) {
         static_assert(
-            sizeof(T) < 0,
+            !sizeof(T),
             "\n\nThis error occurs for one of two reasons:\n\n"
             "1) You have created a struct with more than 100 fields, which is "
             "unsupported. \n\n"

@@ -99,7 +99,7 @@ Task<std::coroutine_handle<>, WhenAnyPromise> start(
             res.emplace<Idx>(co_await t);
         }
     } else {
-        static_assert(sizeof(T) < 0, "The type is not Awaiter");
+        static_assert(!sizeof(T), "The type is not Awaiter");
     }
     co_return ctlBlock.previous;
 }

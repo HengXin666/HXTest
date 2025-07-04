@@ -23,7 +23,24 @@
 #pragma comment(lib, "Mswsock.lib")
 
 namespace HX {
-    
+
+namespace internal {
+
+struct InitWin32Api {
+    InitWin32Api() {
+        WSADATA data;
+        if (::WSAStartup(MAKEWORD(2, 2), &data)) {
+             throw std::runtime_error{"WSAStartup ERROR: " + std::to_string(::GetLastError())};
+        }
+    }
+
+    ~InitWin32Api() noexcept {
+        ::WSACleanup();
+    }
+} __initWin32Api__;
+
+} // namespace internal
+
 void* checkWinError(void* data) {
     if (!data) {
         HX::print::println("Error: ", ::GetLastError());
@@ -204,7 +221,7 @@ WSARecv: 从已连接的套接字接收数据, 支持 OVERLAPPED 结构实现异
         unsigned int flags
     ) && {
         // ::io_uring_prep_socket(_sqe, domain, type, protocol, flags);
-        auto socket = ::socket(domain, type, protocol);
+        auto socket = ::WSASocket(domain, type, protocol, NULL, 0, flags);;
         if (socket == INVALID_SOCKET) [[unlikely]] {
             throw std::runtime_error{"socket ERROR: " + std::to_string(::WSAGetLastError())};
         }
@@ -239,20 +256,25 @@ BOOL AcceptEx(
         */
         // @todo 此处似乎仅支持 ipv4, ipv6 得想其他办法, 比如用宏
         // √8 iocp 和 AcceptEx 的设计... 居然要我们自己传入 new 的客户端套接字...
-        auto cliSocket = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        auto cliSocket = 
+            ::WSASocket(AF_INET, SOCK_STREAM, 0, nullptr, 0, WSA_FLAG_OVERLAPPED);
+            // ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (cliSocket == INVALID_SOCKET) [[unlikely]] {
             throw std::runtime_error{"socket ERROR: " + std::to_string(::WSAGetLastError())};
         }
         associateHandle(reinterpret_cast<HANDLE>(cliSocket));
         
+        char addrBuf[(sizeof(sockaddr_in) + 16) * 2] {};
+        ::DWORD bytes = 0;
+
         bool ok = ::AcceptEx(
             serSocket,
             cliSocket,
-            nullptr,
+            addrBuf,
             0,
             sizeof(::sockaddr) + 16,
             sizeof(::sockaddr) + 16,
-            nullptr,
+            &bytes,
             static_cast<::OVERLAPPED*>(this)
         );
         if (!ok && ::GetLastError() != ERROR_IO_PENDING) [[unlikely]] {
@@ -482,7 +504,7 @@ int WSASend(
     /**
      * @brief 异步关闭文件
      * @param fd 文件描述符
-     * @return AioTask&& 
+     * @return std::suspend_never 
      */
     [[nodiscard]] std::suspend_never prepClose(HANDLE fd) && {
         // ::io_uring_prep_close(_sqe, fd);
@@ -498,6 +520,31 @@ int WSASend(
             throw std::runtime_error{"CloseHandle ERROR: " + std::to_string(::GetLastError())};
         }
         runingHandleRef.erase(fd);
+        // @!!! 这里只能是同步的...
+        return {};
+    }
+
+    /**
+     * @brief 异步关闭套接字
+     * @param socket 套接字
+     * @return std::suspend_never 
+     */
+    [[nodiscard]] std::suspend_never prepClose(::SOCKET socket) && {
+        // ::io_uring_prep_close(_sqe, fd);
+        auto&& runingHandleRef = _runingHandle.get();
+        bool ok = ::closesocket(socket);
+        if (!ok) [[unlikely]] {
+            // 如果这里抛异常了, 那是不是无法关闭?!
+            // 除非 fd 根本就不是由 win32 创建的?!
+            // 原本的东西留着也没有用了...
+            if (auto it = runingHandleRef.find(reinterpret_cast<::HANDLE>(socket));
+                it != runingHandleRef.end()
+            ) {
+                runingHandleRef.erase(it);
+            }
+            throw std::runtime_error{"closesocket ERROR: " + std::to_string(::GetLastError())};
+        }
+        runingHandleRef.erase(reinterpret_cast<::HANDLE>(socket));
         // @!!! 这里只能是同步的...
         return {};
     }
@@ -595,7 +642,7 @@ BOOL GetQueuedCompletionStatusEx(
 );
 */
         std::array<::OVERLAPPED_ENTRY, 64> arr;
-        ULONG n;
+        ULONG n = 0;
         decltype(toDwMilliseconds(*timeout)) dw = INFINITE;
         if (timeout) {
             dw = toDwMilliseconds(*timeout);
@@ -627,7 +674,7 @@ BOOL GetQueuedCompletionStatusEx(
 
     ~Iocp() noexcept {
         if (_iocpHandle) {
-            CloseHandle(_iocpHandle);
+            ::CloseHandle(_iocpHandle);
         }
     }
 
@@ -639,7 +686,7 @@ private:
 
 struct Loop {
     void start() {
-        auto tasks = test4();
+        auto tasks = test5();
         static_cast<std::coroutine_handle<>>(tasks).resume();
         while (true) {
             auto timeout = _timerLoop.run();
@@ -795,50 +842,78 @@ private:
     // 测试网络请求
     Task<> test5() {
         // 1. 等待连接
-        auto serSocket 
-            = co_await _iocp.makeAioTask()
-                            .prepSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, 0);
+        try {
+            auto serSocket 
+                = co_await _iocp.makeAioTask()
+                                .prepSocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, WSA_FLAG_OVERLAPPED);
 
-        sockaddr_in addr;
-        addr.sin_family = AF_INET;   // 地址为IPv4协议
-        addr.sin_port = htons(28205); // 端口为 28205
-        addr.sin_addr.S_un.S_addr = inet_addr("127.0.0.1"); // 具体绑定本机的地址
+            sockaddr_in addr;
+            addr.sin_family = AF_INET;   // 地址为IPv4协议
+            addr.sin_port = htons(28205); // 端口为 28205
+            addr.sin_addr.S_un.S_addr = inet_addr("0.0.0.0"); // 具体绑定本机的地址
 
-        if (::bind(serSocket, reinterpret_cast<::sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR) [[unlikely]] {
-            throw std::runtime_error{"bind error!"};
-        }
+            if (::bind(serSocket, reinterpret_cast<::sockaddr*>(&addr),
+                       sizeof(addr)) == SOCKET_ERROR) [[unlikely]] {
+                throw std::runtime_error{"bind error!"};
+            }
 
-        if (::listen(serSocket, 64) == SOCKET_ERROR) [[unlikely]] {
-            throw std::runtime_error{"listen error!"};
-        }
+            if (::listen(serSocket, 64) == SOCKET_ERROR) [[unlikely]] {
+                throw std::runtime_error{"listen error!"};
+            }
 
-        for(;;) {
-            auto cliFd = co_await _iocp.makeAioTask().prepAccept(serSocket, nullptr, 0);
-            // 2. func: 仅处理连接, 需要分离协程
-            /*
-            期望调度:
-            1)
-                根协程 -> prepAccept 协程 -> 得到 cliSocket -> 创建 cli协程
+            print::println("服务器启动!");
 
-            2)
-                根协程 -> prepAccept 协程
-                根协程 -> cli协程
-            */
-            comm(cliFd).detach();
+            for(;;) {
+                auto cliFd 
+                    = co_await _iocp.makeAioTask()
+                                    .prepAccept(serSocket, nullptr, 0);
+                // 2. func: 仅处理连接, 需要分离协程
+                /*
+                期望调度:
+                1)
+                    根协程 -> prepAccept 协程 -> 得到 cliSocket -> 创建 cli协程
+
+                2)
+                    根协程 -> prepAccept 协程
+                    根协程 -> cli协程
+                */
+                print::println("新连接!");
+                comm(cliFd).detach();
+            }
+        } catch (std::exception& err) {
+            print::println("err: ", err.what());
         }
         co_return;
     }
 
     RootTask<> comm(::SOCKET cliFd) {
+        using namespace std::chrono;
         for(;;) {
-            
+            std::string buf;
+            buf.resize(1024);
+            // 读
+            auto res = co_await whenAny(
+                _iocp.makeAioTask().prepRecv(cliFd, buf, 0),
+                makeTimer().sleepFor(15s)
+            );
+            if (res.index() == 1) [[unlikely]] {
+                print::println("断线, ", cliFd);
+                co_await _iocp.makeAioTask().prepClose(cliFd);
+                break;
+            }
+
+            buf = "你好! " + buf;
+
+            print::println(buf);
+
+            // 写
+            co_await _iocp.makeAioTask().prepSend(cliFd, buf, 0);
         }
         co_return;
     }
 
     Iocp _iocp;
     TimerLoop _timerLoop;
-    // DispatchQueue<> _queue;
 };
 
 } // namespace HX
@@ -857,8 +932,12 @@ using namespace std::chrono;
 int main() {
     using namespace HX;
     setlocale(LC_ALL, "zh_CN.UTF-8");
-    Loop loop;
-    loop.start();
+    try {
+        Loop loop;
+        loop.start();
+    } catch (std::exception& ec) {
+        print::println("ERR: ", ec.what());
+    }
     // constexpr bool _ = AwaitableLike<Task<>>; 
     HX::print::println("END: main");
     return 0;
