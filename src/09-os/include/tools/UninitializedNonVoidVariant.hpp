@@ -153,23 +153,22 @@ struct UninitializedNonVoidVariantIndexToType;
 template <std::size_t Idx, typename T, typename... Ts>
     requires (Idx <= sizeof...(Ts))
 struct UninitializedNonVoidVariantIndexToType<Idx, UninitializedNonVoidVariant<T, Ts...>> {
-    template <typename U, typename... Us>
+    template <std::size_t _I, typename U, typename... Us>
     struct IndexToType {
-        using Type = std::conditional_t<
-            (Idx == UninitializedNonVoidVariantIndex<
-                    NonVoidType<U>, UninitializedNonVoidVariant<T, Ts...>
-            >::val),
-            NonVoidType<U>,
-            typename IndexToType<Us...>::Type
-        >;
+        using Type 
+            = std::conditional_t<
+                Idx == _I,
+                NonVoidType<U>,
+                typename IndexToType<_I + 1, Us...>::Type
+            >;
     };
 
-    template <typename U>
-    struct IndexToType<U> {
+    template <std::size_t _I, typename U>
+    struct IndexToType<_I, U> {
         using Type = NonVoidType<U>;
     };
 
-    using Type = IndexToType<T, Ts...>::Type;
+    using Type = IndexToType<0, T, Ts...>::Type;
 };
 
 template <std::size_t Idx, typename Lambda, typename... Ts>
