@@ -70,11 +70,11 @@ struct AioTask : public ::OVERLAPPED {
         Cancel = 1,
     };
 
-    AioTask(HANDLE iocpHandle, std::unordered_set<::HANDLE>& runingHandle) noexcept
+    AioTask(::HANDLE iocpHandle, std::unordered_set<::HANDLE>& runingHandle) noexcept
         : _iocpHandle{iocpHandle}
         , _runingHandle{runingHandle}
     {
-        ::memset(this, 0, sizeof(OVERLAPPED)); // 必须初始化 OVERLAPPED
+        ::memset(this, 0, sizeof(::OVERLAPPED)); // 必须初始化 OVERLAPPED
     }
 #if 1 // 注意: 不能存在`移动`, 否则 IoUring::makeAioTask 返回就是 构造的新对象; 屏蔽了移动, 反而是编译器优化!
       // 得写移动, 不然无法在 MSVC 上通过编译 对于 HX::whenAny
@@ -113,6 +113,9 @@ private:
     std::reference_wrapper<std::unordered_set<::HANDLE>> _runingHandle;
     std::coroutine_handle<> _previous;
 
+    // @todo Debug
+    std::string _name{"???"};
+
     void associateHandle(::HANDLE h) & {
         auto&& runingHandleRef = _runingHandle.get();
         if (runingHandleRef.count(h))
@@ -136,16 +139,23 @@ private:
         _AioTimeoutTask& operator=(_AioTimeoutTask&&) noexcept = default;
 
         Task<> co() {
+            _self->_name = "timeout";
+            print::println("todo: ", _self->_name, " ", _self.get());
             co_await _timerTask;
             /*
 BOOL PostQueuedCompletionStatus(
-    HANDLE       CompletionPort,                // 目标完成端口的句柄
-    DWORD        dwNumberOfBytesTransferred,    // 自定义的字节数, 可用于传递信息
-    ULONG_PTR    dwCompletionKey,               // 自定义的完成键, 可用于区分不同的操作或I/O源
-    LPOVERLAPPED lpOverlapped                   // OVERLAPPED结构的指针
-        // 注: GetQueuedCompletionStatusEx 拿到的是 此处的 OVERLAPPED
-        // 但是之前的 OVERLAPPED 也会被 iocp 取出! 因此我们需要自己标记一下 ... 写个状态机 ...
-);
+    HANDLE CompletionPort,            // I/O 完成数据包要发布到的 I/O 完成端口的句柄
+
+    DWORD dwNumberOfBytesTransferred, // 自定义的字节数;
+                                      // GetQueuedCompletionStatus 的 lpNumberOfBytesTransferred 参数返回的值
+
+    ULONG_PTR dwCompletionKey,        // 自定义的完成键, 可用于区分不同的操作或I/O源
+                                      // GetQueuedCompletionStatus 的 lpCompletionKey 参数返回的值
+
+    LPOVERLAPPED lpOverlapped         // OVERLAPPED结构的指针
+);      // 如果函数失败，则返回值为零。 若要获取扩展的错误信息，请调用 GetLastError 
+    // 注: GetQueuedCompletionStatusEx 拿到的是 此处的 OVERLAPPED
+    // 但是之前的 OVERLAPPED 也会被 iocp 取出! 因此我们需要自己标记一下 ... 写个状态机 ...
             */
             bool ok = ::PostQueuedCompletionStatus(
                 _self->_iocpHandle,
@@ -442,6 +452,9 @@ int WSARecv(
   [in]  LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine   // 完成例程的回调函数, 当I/O操作完成时被调用
 );
 */
+        _name = "recv";
+        print::println("@todo: ", _name, " ", this);
+        associateHandle(reinterpret_cast<::HANDLE>(fd));
         ::WSABUF wsabuf {
             static_cast<::ULONG>(buf.size()),
             buf.data(),
@@ -485,6 +498,8 @@ int WSASend(
   LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine    // 回调函数的指针
 );
 */
+        _name = "send";
+        associateHandle(reinterpret_cast<::HANDLE>(fd));
         ::WSABUF wsabuf{
             static_cast<::ULONG>(buf.size()),
             const_cast<char*>(buf.data()),
@@ -584,14 +599,16 @@ int WSASend(
         _AioTimeoutTask&& timeoutTask
     ) {
         return [](AioTask&& _task,  _AioTimeoutTask&& _timeoutTask) 
-        -> Task<HX::AwaiterReturnValue<decltype(whenAny(std::move(task), timeoutTask.co()))>> {
-            _timeoutTask._self->_iocpHandle = _task._iocpHandle;
+        -> Task<AwaiterReturnValue<decltype(whenAny(std::move(task), timeoutTask.co()))>> {
+            // 完蛋, 发现bug了, 现在需要大大滴重构了...
+            // iocp 没有取消 api !!!, 只能通过关闭来解决, 并且还有竞争态的问题...
+            // _timeoutTask._self->_iocpHandle = _task._iocpHandle;
             co_return co_await whenAny(std::move(_task), _timeoutTask.co());
         }(std::move(task), std::move(timeoutTask));
     }
 
     ~AioTask() noexcept {
-        HX::print::println(this, " 自杀了");
+        HX::print::println(_name, " ", this, " 自杀了");
     }
 };
 
@@ -666,7 +683,10 @@ BOOL GetQueuedCompletionStatusEx(
                 print::println("已取消");
                 continue;
             }
+            print::println("ptr.dwNumberOfBytesTransferred { ", ptr.dwNumberOfBytesTransferred, " | ", ptr.lpOverlapped);
             task->_res = ptr.dwNumberOfBytesTransferred;
+            print::println("is ", i);
+            print::println("} // ptr.dwNumberOfBytesTransferred ", ptr.dwNumberOfBytesTransferred, " | ", ptr.lpOverlapped);
             _tasks.push_back(task->_previous);
         }
 
@@ -684,7 +704,7 @@ BOOL GetQueuedCompletionStatusEx(
     }
 
 private:
-    HANDLE _iocpHandle;
+    ::HANDLE _iocpHandle;
     std::unordered_set<::HANDLE> _runingHandle;
     std::vector<std::coroutine_handle<>> _tasks;
 };
