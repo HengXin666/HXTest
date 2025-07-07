@@ -61,27 +61,21 @@ DWORD toDwMilliseconds(std::chrono::system_clock::duration dur) {
     if (ms >= std::numeric_limits<DWORD>::max())
         return INFINITE;
 
-    return static_cast<DWORD>(ms);
+    return static_cast<::DWORD>(ms);
 }
 
-struct AioTask : public ::OVERLAPPED {
-    enum class State {
-        Normal,
-        Cancel = 1,
-    };
-
-    AioTask(::HANDLE iocpHandle, std::unordered_set<::HANDLE>& runingHandle) noexcept
+struct AioTask {
+    AioTask(::HANDLE iocpHandle, std::unordered_set<::HANDLE>& runingHandle)
         : _iocpHandle{iocpHandle}
         , _runingHandle{runingHandle}
-    {
-        ::memset(this, 0, sizeof(::OVERLAPPED)); // 必须初始化 OVERLAPPED
-    }
+        , _data{new _AioIocpData{*this}}
+    {}
 #if 1 // 注意: 不能存在`移动`, 否则 IoUring::makeAioTask 返回就是 构造的新对象; 屏蔽了移动, 反而是编译器优化!
       // 得写移动, 不然无法在 MSVC 上通过编译 对于 HX::whenAny
-    AioTask& operator=(AioTask const&) noexcept = delete;
+    AioTask& operator=(AioTask const&) = delete;
     AioTask(AioTask const&) noexcept = delete;
 
-    AioTask(AioTask&&) noexcept = default;
+    AioTask(AioTask&&) = default;
     AioTask& operator=(AioTask&&) noexcept = default;
 #else
     AioTask& operator=(AioTask&&) noexcept = delete;
@@ -104,24 +98,49 @@ struct AioTask : public ::OVERLAPPED {
     }
 
 private:
+    /**
+     * @brief 非 RAII 的, 存放 OVERLAPPED 的类
+     */
+    struct _AioIocpData : public ::OVERLAPPED {
+        _AioIocpData(AioTask& self)
+            : _self{self}
+            , _isCancel{false}
+        {
+            ::memset(this, 0, sizeof(::OVERLAPPED)); // 必须初始化 OVERLAPPED
+        }
+
+        _AioIocpData& operator=(_AioIocpData&&) noexcept = delete;
+
+        void setCancel() noexcept {
+            _isCancel = true;
+        }
+
+        bool isCancel() const noexcept {
+            return _isCancel;
+        }
+
+        AioTask& _self; // 注意! 当 res = err 或者 _iocpState & 1 == Cancel 时候,
+                        // _self 为悬挂引用! (野指针)
+        bool _isCancel;
+    };
+
     friend struct Iocp;
 
     union {
         uint64_t _res;
         ::HANDLE _iocpHandle;
     };
+    UninitializedNonVoidVariant<::HANDLE, ::SOCKET> _fd;
     std::reference_wrapper<std::unordered_set<::HANDLE>> _runingHandle;
     std::coroutine_handle<> _previous;
+    _AioIocpData* _data; // 其实际所有权会被转移到 Loop::run() 中
 
-    // @todo Debug
-    std::string _name{"???"};
-
-    void associateHandle(::HANDLE h) & {
+    void _associateHandle(::HANDLE h) & {
         auto&& runingHandleRef = _runingHandle.get();
         if (runingHandleRef.count(h))
             return;
         if (!::CreateIoCompletionPort(
-            h, _iocpHandle, static_cast<ULONG_PTR>(State::Normal), 0) 
+            h, _iocpHandle, 0, 0) 
             && ::GetLastError() != ERROR_INVALID_PARAMETER
         ) {
             throw std::runtime_error{std::to_string(::GetLastError())};
@@ -129,49 +148,49 @@ private:
         runingHandleRef.insert(h);
     }
 
+    void associateHandle(::HANDLE h) & {
+        _fd.emplace<::HANDLE>(h);
+        _associateHandle(h);
+    }
+
+    void associateHandle(::SOCKET h) & {
+        _fd.emplace<::SOCKET>(h);
+        _associateHandle(reinterpret_cast<::HANDLE>(h));
+    }
+
     struct _AioTimeoutTask {
-        _AioTimeoutTask(AioTask&& self, TimerLoop::TimerAwaiter&& timerTask)
-            : _self{std::make_unique<AioTask>(std::move(self))}
+        _AioTimeoutTask(TimerLoop::TimerAwaiter&& timerTask)
+            : _self{}
             , _timerTask{std::move(timerTask)}
         {}
 
         _AioTimeoutTask(_AioTimeoutTask&&) = default;
         _AioTimeoutTask& operator=(_AioTimeoutTask&&) noexcept = default;
 
-        Task<> co() {
-            _self->_name = "timeout";
-            print::println("todo: ", _self->_name, " ", _self.get());
+        Task<> co() noexcept {
             co_await _timerTask;
-            /*
-BOOL PostQueuedCompletionStatus(
-    HANDLE CompletionPort,            // I/O 完成数据包要发布到的 I/O 完成端口的句柄
-
-    DWORD dwNumberOfBytesTransferred, // 自定义的字节数;
-                                      // GetQueuedCompletionStatus 的 lpNumberOfBytesTransferred 参数返回的值
-
-    ULONG_PTR dwCompletionKey,        // 自定义的完成键, 可用于区分不同的操作或I/O源
-                                      // GetQueuedCompletionStatus 的 lpCompletionKey 参数返回的值
-
-    LPOVERLAPPED lpOverlapped         // OVERLAPPED结构的指针
-);      // 如果函数失败，则返回值为零。 若要获取扩展的错误信息，请调用 GetLastError 
-    // 注: GetQueuedCompletionStatusEx 拿到的是 此处的 OVERLAPPED
-    // 但是之前的 OVERLAPPED 也会被 iocp 取出! 因此我们需要自己标记一下 ... 写个状态机 ...
-            */
-            bool ok = ::PostQueuedCompletionStatus(
-                _self->_iocpHandle,
-                0,
-                static_cast<ULONG_PTR>(State::Cancel),
-                static_cast<::OVERLAPPED*>(_self.get())
-            );
-            if (!ok) [[unlikely]] {
-                throw std::runtime_error{"PostQueuedCompletionStatus ERROR: " 
-                    + std::to_string(::GetLastError())};
+            _self->_data->setCancel();
+            switch (_self->_fd.index()) {
+                case 0: { // HANDLE
+                    co_await std::move(*_self).prepClose(
+                        _self->_fd.get<::HANDLE, ExceptionMode::Nothrow>());
+                    break;
+                }
+                [[likely]] case 1: { // SOCKET
+                    co_await std::move(*_self).prepClose(
+                        _self->_fd.get<::SOCKET, ExceptionMode::Nothrow>());
+                    break;
+                }
+                [[unlikely]] case UninitializedNonVoidVariantNpos: {
+                    // 库内部错误
+                    std::terminate();
+                }
             }
             co_return;
         }
     private:
         friend AioTask;
-        std::unique_ptr<AioTask> _self;
+        AioTask* _self; // 无所有权! 为链接的只读
         TimerLoop::TimerAwaiter _timerTask;
     };
 public:
@@ -235,7 +254,7 @@ WSARecv: 从已连接的套接字接收数据, 支持 OVERLAPPED 结构实现异
         if (socket == INVALID_SOCKET) [[unlikely]] {
             throw std::runtime_error{"socket ERROR: " + std::to_string(::WSAGetLastError())};
         }
-        associateHandle(reinterpret_cast<::HANDLE>(socket));
+        associateHandle(socket);
         co_return socket;
     }
 
@@ -268,12 +287,14 @@ BOOL AcceptEx(
         // @todo 此处似乎仅支持 ipv4, ipv6 得想其他办法, 比如用宏
         // √8 iocp 和 AcceptEx 的设计... 居然要我们自己传入 new 的客户端套接字...
         auto cliSocket = 
-            ::WSASocket(AF_INET, SOCK_STREAM, 0, nullptr, 0, WSA_FLAG_OVERLAPPED);
-            // ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+            ::WSASocket(AF_INET, SOCK_STREAM, 0,
+                        nullptr, 0, WSA_FLAG_OVERLAPPED);
+        
         if (cliSocket == INVALID_SOCKET) [[unlikely]] {
-            throw std::runtime_error{"socket ERROR: " + std::to_string(::WSAGetLastError())};
+            throw std::runtime_error{
+                "socket ERROR: " + std::to_string(::WSAGetLastError())};
         }
-        associateHandle(reinterpret_cast<::HANDLE>(cliSocket));
+        associateHandle(cliSocket);
         
         char addrBuf[2 * (sizeof(::sockaddr) + 16)] {};
         ::DWORD bytes = 0;
@@ -286,10 +307,11 @@ BOOL AcceptEx(
             sizeof(::sockaddr) + 16,
             sizeof(::sockaddr) + 16,
             &bytes,
-            static_cast<::OVERLAPPED*>(this)
+            static_cast<::OVERLAPPED*>(_data)
         );
         if (!ok && ::WSAGetLastError() != ERROR_IO_PENDING) [[unlikely]] {
-            throw std::runtime_error{"AcceptEx ERROR: " + std::to_string(::GetLastError())};
+            throw std::runtime_error{
+                "AcceptEx ERROR: " + std::to_string(::GetLastError())};
         }
         return [](AioTask&& task, ::SOCKET _cliSocket) -> Task<::SOCKET> {
             co_await task;
@@ -321,7 +343,7 @@ BOOL AcceptEx(
      * @return AioTask&& 
      */
     [[nodiscard]] AioTask&& prepRead(
-        HANDLE fd,
+        ::HANDLE fd,
         std::span<char> buf,
         std::uint64_t offset
     ) && {
@@ -352,17 +374,18 @@ typedef struct _OVERLAPPED {
         */
         associateHandle(fd);
         // 设置偏移量
-        Offset = static_cast<DWORD>(offset & 0xFFFFFFFF);
-        OffsetHigh = static_cast<DWORD>((offset >> 32) & 0xFFFFFFFF);
+        _data->Offset = static_cast<::DWORD>(offset & 0xFFFFFFFF);
+        _data->OffsetHigh = static_cast<::DWORD>((offset >> 32) & 0xFFFFFFFF);
         bool ok = ::ReadFile(
             fd,
             buf.data(),
-            static_cast<DWORD>(buf.size()),
+            static_cast<::DWORD>(buf.size()),
             nullptr,
-            static_cast<::OVERLAPPED*>(this)
+            static_cast<::OVERLAPPED*>(_data)
         );
         if (!ok && ::GetLastError() != ERROR_IO_PENDING) [[unlikely]] {
-            throw std::runtime_error{"ReadFile ERROR: " + std::to_string(::GetLastError())};
+            throw std::runtime_error{
+                "ReadFile ERROR: " + std::to_string(::GetLastError())};
         }
         return std::move(*this);
     }
@@ -376,7 +399,7 @@ typedef struct _OVERLAPPED {
      * @return AioTask&& 
      */
     [[nodiscard]] AioTask&& prepRead(
-        HANDLE fd,
+        ::HANDLE fd,
         std::span<char> buf,
         unsigned int size,
         std::uint64_t offset
@@ -384,17 +407,18 @@ typedef struct _OVERLAPPED {
         // ::io_uring_prep_read(_sqe, fd, buf.data(), size, offset);
         associateHandle(fd);
         // 设置偏移量
-        Offset = static_cast<DWORD>(offset & 0xFFFFFFFF);
-        OffsetHigh = static_cast<DWORD>((offset >> 32) & 0xFFFFFFFF);
+        _data->Offset = static_cast<::DWORD>(offset & 0xFFFFFFFF);
+        _data->OffsetHigh = static_cast<::DWORD>((offset >> 32) & 0xFFFFFFFF);
         bool ok = ::ReadFile(
             fd,
             buf.data(),
-            static_cast<DWORD>(size),
+            static_cast<::DWORD>(size),
             nullptr,
-            static_cast<::OVERLAPPED*>(this)
+            static_cast<::OVERLAPPED*>(_data)
         );
         if (!ok && ::GetLastError() != ERROR_IO_PENDING) [[unlikely]] {
-            throw std::runtime_error{"ReadFile ERROR: " + std::to_string(::GetLastError())};
+            throw std::runtime_error{
+                "ReadFile ERROR: " + std::to_string(::GetLastError())};
         }
         return std::move(*this);
     }
@@ -413,17 +437,18 @@ typedef struct _OVERLAPPED {
     ) && {
         // ::io_uring_prep_write(_sqe, fd, buf.data(), static_cast<unsigned int>(buf.size()), offset);
         associateHandle(fd);
-        Offset = static_cast<DWORD>(offset & 0xFFFFFFFF);
-        OffsetHigh = static_cast<DWORD>((offset >> 32) & 0xFFFFFFFF);
+        _data->Offset = static_cast<::DWORD>(offset & 0xFFFFFFFF);
+        _data->OffsetHigh = static_cast<::DWORD>((offset >> 32) & 0xFFFFFFFF);
         bool ok = ::WriteFile(
             fd,
             buf.data(),
-            static_cast<DWORD>(buf.size()),
+            static_cast<::DWORD>(buf.size()),
             nullptr,
-            static_cast<::OVERLAPPED*>(this)
+            static_cast<::OVERLAPPED*>(_data)
         );
         if (!ok && ::GetLastError() != ERROR_IO_PENDING) [[unlikely]] {
-            throw std::runtime_error{"WriteFile ERROR: " + std::to_string(::GetLastError())};
+            throw std::runtime_error{
+                "WriteFile ERROR: " + std::to_string(::GetLastError())};
         }
         return std::move(*this);
     }
@@ -452,9 +477,7 @@ int WSARecv(
   [in]  LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine   // 完成例程的回调函数, 当I/O操作完成时被调用
 );
 */
-        _name = "recv";
-        print::println("@todo: ", _name, " ", this);
-        associateHandle(reinterpret_cast<::HANDLE>(fd));
+        associateHandle(fd);
         ::WSABUF wsabuf {
             static_cast<::ULONG>(buf.size()),
             buf.data(),
@@ -465,11 +488,12 @@ int WSARecv(
             1,
             nullptr,
             &flags,
-            static_cast<::OVERLAPPED*>(this),
+            static_cast<::OVERLAPPED*>(_data),
             nullptr
         );
         if (ok == SOCKET_ERROR && ::WSAGetLastError() != ERROR_IO_PENDING) [[unlikely]] {
-            throw std::runtime_error{"WSARecv ERROR: " + std::to_string(::WSAGetLastError())};
+            throw std::runtime_error{
+                "WSARecv ERROR: " + std::to_string(::WSAGetLastError())};
         }
         return std::move(*this);
     }
@@ -498,8 +522,7 @@ int WSASend(
   LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine    // 回调函数的指针
 );
 */
-        _name = "send";
-        associateHandle(reinterpret_cast<::HANDLE>(fd));
+        associateHandle(fd);
         ::WSABUF wsabuf{
             static_cast<::ULONG>(buf.size()),
             const_cast<char*>(buf.data()),
@@ -510,11 +533,12 @@ int WSASend(
             1,
             nullptr,
             flags,
-            static_cast<::OVERLAPPED*>(this),
+            static_cast<::OVERLAPPED*>(_data),
             nullptr
         );
         if (ok == SOCKET_ERROR && ::WSAGetLastError() != ERROR_IO_PENDING) [[unlikely]] {
-            throw std::runtime_error{"WSASend ERROR: " + std::to_string(::WSAGetLastError())};
+            throw std::runtime_error{
+                "WSASend ERROR: " + std::to_string(::WSAGetLastError())};
         }
         return std::move(*this);
     }
@@ -524,7 +548,7 @@ int WSASend(
      * @param fd 文件描述符
      * @return std::suspend_never 
      */
-    [[nodiscard]] std::suspend_never prepClose(HANDLE fd) && {
+    [[nodiscard]] std::suspend_never prepClose(::HANDLE fd) && {
         // ::io_uring_prep_close(_sqe, fd);
         auto&& runingHandleRef = _runingHandle.get();
         bool ok = ::CloseHandle(fd);
@@ -532,12 +556,15 @@ int WSASend(
             // 如果这里抛异常了, 那是不是无法关闭?!
             // 除非 fd 根本就不是由 win32 创建的?!
             // 原本的东西留着也没有用了...
-            if (auto it = runingHandleRef.find(fd); it != runingHandleRef.end()) {
+            if (auto it = runingHandleRef.find(fd); it != runingHandleRef.end()) [[unlikely]] {
                 runingHandleRef.erase(it);
+                throw std::runtime_error{
+                    "CloseHandle ERROR: " + std::to_string(::GetLastError())};
             }
-            throw std::runtime_error{"CloseHandle ERROR: " + std::to_string(::GetLastError())};
+            // 那仅仅只是超时了 ...
+        } else {
+            runingHandleRef.erase(fd);
         }
-        runingHandleRef.erase(fd);
         // @!!! 这里只能是同步的...
         return {};
     }
@@ -557,12 +584,15 @@ int WSASend(
             // 原本的东西留着也没有用了...
             if (auto it = runingHandleRef.find(reinterpret_cast<::HANDLE>(socket));
                 it != runingHandleRef.end()
-            ) [[likely]] {
+            ) [[unlikely]] {
                 runingHandleRef.erase(it);
+                throw std::runtime_error{
+                    "closesocket ERROR: " + std::to_string(::WSAGetLastError())};
             }
-            throw std::runtime_error{"closesocket ERROR: " + std::to_string(::WSAGetLastError())};
+            // 超时了 ...
+        } else {
+            runingHandleRef.erase(reinterpret_cast<::HANDLE>(socket));
         }
-        runingHandleRef.erase(reinterpret_cast<::HANDLE>(socket));
         // @!!! 这里只能是同步的...
         return {};
     }
@@ -591,24 +621,19 @@ int WSASend(
         TimerLoop::TimerAwaiter&& timerTask
     ) && {
         // ::io_uring_prep_link_timeout(_sqe, ts, flags);
-        return {std::move(*this), std::move(timerTask)};
+        return {std::move(timerTask)};
     }
 
-    [[nodiscard]] inline static auto linkTimeout(
+    [[nodiscard]] inline static Task<UninitializedNonVoidVariant<uint64_t, void>> linkTimeout(
         AioTask&& task, 
         _AioTimeoutTask&& timeoutTask
     ) {
-        return [](AioTask&& _task,  _AioTimeoutTask&& _timeoutTask) 
-        -> Task<AwaiterReturnValue<decltype(whenAny(std::move(task), timeoutTask.co()))>> {
-            // 完蛋, 发现bug了, 现在需要大大滴重构了...
-            // iocp 没有取消 api !!!, 只能通过关闭来解决, 并且还有竞争态的问题...
-            // _timeoutTask._self->_iocpHandle = _task._iocpHandle;
-            co_return co_await whenAny(std::move(_task), _timeoutTask.co());
-        }(std::move(task), std::move(timeoutTask));
+        timeoutTask._self = &task;
+        co_return co_await whenAny(std::move(task), timeoutTask.co());
     }
 
     ~AioTask() noexcept {
-        HX::print::println(_name, " ", this, " 自杀了");
+        HX::print::println(this, " 自杀了");
     }
 };
 
@@ -667,7 +692,7 @@ BOOL GetQueuedCompletionStatusEx(
         if (timeout) {
             dw = toDwMilliseconds(*timeout);
         }
-        ::GetQueuedCompletionStatusEx(
+        bool ok = ::GetQueuedCompletionStatusEx(
             _iocpHandle,
             arr.data(),
             static_cast<::DWORD>(arr.size()),
@@ -676,18 +701,23 @@ BOOL GetQueuedCompletionStatusEx(
             false
         );
 
+        if (!ok) [[unlikely]] { // 超时
+            return;
+        }
+
         for (::ULONG i = 0; i < n; ++i) {
             auto ptr = arr[i];
-            auto task = reinterpret_cast<AioTask*>(ptr.lpOverlapped);
-            if (ptr.lpCompletionKey == static_cast<::ULONG_PTR>(AioTask::State::Cancel)) {
-                print::println("已取消");
+            auto task = std::unique_ptr<AioTask::_AioIocpData>{
+                reinterpret_cast<AioTask::_AioIocpData*>(ptr.lpOverlapped)
+            };
+            if (task->isCancel()) { // 垃圾 winApi 读过书吗老弟? 还要用 WSAGetOverlappedResult
+                                    // 来获取错误? 乱搞! 这不又有内核态切换开销?
+                                    // 因为我们期望的错误都是我们自己产生的, 比如我希望取消, 则 close
+                                    // 所以close之前, 我们可以记录一下其状态!
                 continue;
             }
-            print::println("ptr.dwNumberOfBytesTransferred { ", ptr.dwNumberOfBytesTransferred, " | ", ptr.lpOverlapped);
-            task->_res = ptr.dwNumberOfBytesTransferred;
-            print::println("is ", i);
-            print::println("} // ptr.dwNumberOfBytesTransferred ", ptr.dwNumberOfBytesTransferred, " | ", ptr.lpOverlapped);
-            _tasks.push_back(task->_previous);
+            task->_self._res = ptr.dwNumberOfBytesTransferred;
+            _tasks.push_back(task->_self._previous);
         }
 
         for (const auto& t : _tasks) {
@@ -776,6 +806,7 @@ private:
                 print::println("res: ", res.index());
                 if (res.index() == 1) {
                     print::print("超时了~");
+                    // 如果超时, 内部会自动取消了
                     co_await _iocp.makeAioTask().prepClose(hStdin);
                     co_return;
                 }
@@ -920,15 +951,18 @@ private:
             print::println("等待读取...");
             try {
                 // 读
-                auto res = co_await AioTask::linkTimeout(
+                auto recvSize = co_await AioTask::linkTimeout(
                     _iocp.makeAioTask().prepRecv(cliFd, buf, 0),
                     _iocp.makeAioTask().prepLinkTimeout(
                         makeTimer().sleepFor(3s)
                     )
                 );
-                if (res.index() == 1) [[unlikely]] {
+
+                if (recvSize.index() == 1) [[unlikely]] {
                     break;
                 }
+
+                buf.resize(recvSize.get<0>());
 
                 buf = "Hello! " + buf;
 
@@ -942,6 +976,7 @@ private:
             } catch (std::exception& ec) {
                 using namespace std::string_literals;
                 print::println(ec.what());
+                break;
             }
         }
         print::println("断线, ", cliFd);
