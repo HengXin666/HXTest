@@ -32,6 +32,11 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
         - 04-sort
             - [sort](./src/06-std-analyse/demo/04-sort/01_sort.cpp) (一个支持迭代器、谓词的单边快排)
 
+        - 05-完美哈希
+            - [gpt给的, 完美哈希源码, 但是数量太多(50)个就不行了](src/06-std-analyse/demo/05-pmh/01_test_pmh_map.cpp)
+            - [复制粘贴其他的库来研究源码... 我还以为是编译期的qwq](src/06-std-analyse/demo/05-pmh/02_cp_pmh_test.cpp)
+            - [编译期完美哈希思想的比较探测的哈希表, 即便元素数量有1233个(我随便找的), 也毫无压力](src/06-std-analyse/demo/05-pmh/03_test_pmh.cpp)
+
         - 坑:
             - std::is_convertible、 is_constructible 实现
     - 实验 & 学习

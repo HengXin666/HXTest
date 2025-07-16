@@ -8,6 +8,8 @@ file(GLOB_RECURSE TEST_FILES CONFIGURE_DEPENDS
     ./test/*.cpp
 )
 
+include_directories(../09-os/include)
+
 # 遍历每个 .cpp 文件, 生成可执行文件
 foreach(TEST_FILE ${DEMO_FILES})
     # 提取 .cpp 文件名作为目标名 (去掉路径和扩展名)

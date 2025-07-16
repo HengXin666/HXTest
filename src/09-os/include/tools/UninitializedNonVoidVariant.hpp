@@ -176,6 +176,35 @@ constexpr decltype(auto) visitHelper(UninitializedNonVoidVariant<Ts...>& uv, Lam
     return lambda(uv.template get<Idx, ExceptionMode::Nothrow>());
 }
 
+/**
+ * @brief 判断 T 是否可以从 Ts 中被唯一构造
+ * @tparam T 
+ * @tparam Ts 
+ * @return consteval std::size_t 如果可以从 Ts 中唯一构造, 返回 Ts 元素的索引
+ *                               如果无法从 Ts 中唯一构造, 返回 sizeof...(Ts)
+ */
+template <typename T, typename... Ts>
+consteval std::size_t findUniqueConstructibleIndex() noexcept {
+    constexpr std::size_t N = sizeof...(Ts);
+    std::size_t res = N;
+    std::size_t i = 0, cnt = 0;
+    ([&]() {
+        // 没有 requires 可以使用 std::is_constructible_v<Ts, T&&> 代替
+        if (requires (T&& t) {
+            Ts{std::forward<T>(t)};
+        }) {
+            res = i;
+            ++cnt;
+        }
+        ++i;
+    }(), ...);
+    if (cnt != 1) {
+        // 无法从 U 构造到 T, 可能有0个或者多个匹配
+        return N;
+    }
+    return res;
+}
+
 } // namespace internal
 
 inline constexpr std::size_t UninitializedNonVoidVariantNpos
@@ -204,10 +233,11 @@ struct UninitializedNonVoidVariant {
         : _idx{UninitializedNonVoidVariantNpos}
     {}
 
-    template <typename T>
-        // requires (std::is_constructible_v<NonVoidHelper<T>, NonVoidHelper<Ts>...>) // @todo
-    explicit UninitializedNonVoidVariant(T&& t) noexcept(std::is_nothrow_constructible_v<T, T&&>)
-        : _idx{UninitializedNonVoidVariantIndexVal<T, UninitializedNonVoidVariant>}
+    template <typename U, std::size_t Idx = internal::findUniqueConstructibleIndex<U, Ts...>(),
+              typename T = UninitializedNonVoidVariantIndexToType<Idx, Ts...>>
+        requires(Idx < N)
+    UninitializedNonVoidVariant(U&& t) noexcept(std::is_nothrow_constructible_v<U, T&&>)
+        : _idx{Idx}
     {
         /*
     核心思路: 判断 T 可以构造为 Ts..., 并且只能匹配成功一个
@@ -216,8 +246,7 @@ struct UninitializedNonVoidVariant {
         3) 同时函数返回对应的索引 (不合法就返回 sizeof...(Ts))
         4) 持有索引就可以找到准确的类型 U, 然后 T 构造为 U 了
         */
-        constexpr std::size_t Idx = UninitializedNonVoidVariantIndexVal<T, UninitializedNonVoidVariant>;
-        new (std::addressof(get<Idx, ExceptionMode::Nothrow>())) T(std::forward<T>(t));
+        new (std::addressof(get<Idx, ExceptionMode::Nothrow>())) T(std::forward<U>(t));
     }
 
     UninitializedNonVoidVariant(UninitializedNonVoidVariant const& that) 
@@ -340,10 +369,11 @@ struct UninitializedNonVoidVariant {
         return get<Idx, ExceptionMode::Nothrow>();
     }
 
-    template <typename T>
-        requires (!std::is_same_v<std::decay_t<T>, UninitializedNonVoidVariant>)
-    UninitializedNonVoidVariant& operator=(T&& t) noexcept {
-        emplace<T>(std::forward<T>(t));
+    template <typename U, std::size_t Idx = internal::findUniqueConstructibleIndex<U, Ts...>(),
+              typename T = UninitializedNonVoidVariantIndexToType<Idx, Ts...>>
+        requires(Idx < N)
+    UninitializedNonVoidVariant& operator=(U&& t) noexcept {
+        emplace<T>(std::forward<U>(t));
         return *this;
     }
 
