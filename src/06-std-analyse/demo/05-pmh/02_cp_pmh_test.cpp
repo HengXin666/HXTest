@@ -1,7 +1,9 @@
+#include <algorithm>
 #include <functional>
 #include <cstdint>
 
 #include <array>
+#include <iostream>
 #include <iterator>
 #include <string>
 #include <utility>
@@ -417,49 +419,6 @@ template <std::size_t N>
 using select_uint_least_t = decltype(select_uint_least(
     std::integral_constant<std::size_t, bit_weight(N)>()));
 
-
-template <class T>
-constexpr void cswap(T& a, T& b) {
-    auto tmp = a;
-    a = b;
-    b = tmp;
-}
-
-template <typename Iterator, class Compare>
-constexpr Iterator partition(Iterator left, Iterator right,
-                             Compare const& compare) {
-    auto pivot = left + (right - left) / 2;
-    auto value = *pivot;
-    cswap(*right, *pivot);
-    for (auto it = left; 0 < right - it; ++it) {
-        if (compare(*it, value)) {
-            cswap(*it, *left);
-            left++;
-        }
-    }
-    cswap(*right, *left);
-    return left;
-}
-
-template <typename Iterator, class Compare>
-constexpr void quicksort(Iterator left, Iterator right,
-                         Compare const& compare) {
-    while (0 < right - left) {
-        auto new_pivot = bits::partition(left, right, compare);
-        quicksort(left, new_pivot, compare);
-        left = new_pivot + 1;
-    }
-}
-
-template <typename T, std::size_t N, class Compare>
-constexpr bits::carray<T, N> quicksort(bits::carray<T, N> const& array,
-                                       Compare const& compare) {
-    bits::carray<T, N> res = array;
-    quicksort(res.begin(), res.end() - 1, compare);
-    return res;
-}
-
-
 }} // namespace frozen::bits
 
 namespace frozen { namespace bits {
@@ -523,8 +482,7 @@ struct pmh_buckets {
     carray<bucket_ref, M> constexpr get_sorted_buckets() const {
         carray<bucket_ref, M> result{
             this->make_bucket_refs(std::make_index_sequence<M>())};
-        bits::quicksort(result.begin(), result.end() - 1,
-                        bucket_size_compare{});
+        std::sort(result.begin(), result.end(), bucket_size_compare{});
         return result;
     }
 };
@@ -544,9 +502,8 @@ pmh_buckets<M> constexpr make_pmh_buckets(const carray<Item, N>& items,
         result.seed = prg();
         rejected = false;
         for (std::size_t i = 0; i < N; ++i) {
-            auto& bucket = result.buckets[hash(key(items[i]),
-                                               static_cast<size_t>(result.seed))
-                                          % M];
+            auto& bucket = result.buckets[
+                hash(key(items[i]), static_cast<size_t>(result.seed)) % M];
             if (bucket.size() >= result_t::bucket_max) {
                 rejected = true;
                 break;
@@ -665,12 +622,14 @@ pmh_tables<M, Hash> constexpr make_pmh_tables(const carray<Item, N>& items,
             cvector<std::size_t, decltype(step_one)::bucket_max> bucket_slots;
 
             while (bucket_slots.size() < bsize) {
-                auto slot = hash(key(items[bucket[bucket_slots.size()]]),
-                                 static_cast<size_t>(d.value()))
-                            % M;
+                auto slot = hash(
+                    key(
+                        items[bucket[bucket_slots.size()]]
+                    ),
+                        static_cast<size_t>(d.value())
+                    ) % M;
 
-                if (H[slot] != UNUSED
-                    || !all_different_from(bucket_slots, slot)) {
+                if (H[slot] != UNUSED || !all_different_from(bucket_slots, slot)) {
                     bucket_slots.clear();
                     d = {true, prg()};
                     continue;
@@ -707,12 +666,6 @@ class linear_congruential_engine {
     static_assert(std::is_unsigned<UIntType>::value,
                   "UIntType must be an unsigned integral type");
 
-    template <class T>
-    static constexpr UIntType modulo(T val,
-                                     std::integral_constant<UIntType, 0>) {
-        return static_cast<UIntType>(val);
-    }
-
     template <class T, UIntType M>
     static constexpr UIntType modulo(T val,
                                      std::integral_constant<UIntType, M>) {
@@ -744,19 +697,6 @@ public:
         state_ = modulo(tmp, std::integral_constant<UIntType, modulus>());
         return state_;
     }
-    // constexpr void discard(unsigned long long n) {
-    //   while (n--) operator()();
-    // }
-    // static constexpr result_type min() { return increment == 0u ? 1u : 0u; }
-    // static constexpr result_type max() { return modulus - 1u; }
-    friend constexpr bool operator==(linear_congruential_engine const& self,
-                                     linear_congruential_engine const& other) {
-        return self.state_ == other.state_;
-    }
-    friend constexpr bool operator!=(linear_congruential_engine const& self,
-                                     linear_congruential_engine const& other) {
-        return !(self == other);
-    }
 
 private:
     result_type state_ = default_seed;
@@ -766,8 +706,26 @@ private:
 using minstd_rand =
     linear_congruential_engine<std::uint_fast32_t, 48271, 0, 2147483647>;
 
-// This generator is used by default in unordered frozen containers
-using default_prg_t = minstd_rand;
+struct XorShift32 {
+    uint32_t a;
+
+    constexpr XorShift32(size_t seed = 0) 
+        : a(static_cast<uint32_t>(seed + 1)) 
+    {}
+
+    using result_type = uint32_t;
+
+    constexpr uint32_t operator()() noexcept {
+        uint32_t x = a;
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        return a = x;
+    }
+};
+
+// 默认情况下，此生成器用于无序的冻结集装箱
+using default_prg_t = XorShift32;
 
 } // namespace frozen
 
@@ -817,7 +775,7 @@ public:
 
 public:
     /* constructors */
-    unordered_map(unordered_map const&) = default;
+    // unordered_map(unordered_map const&) = default;
     constexpr unordered_map(container_type items, Hash const& hash,
                             KeyEqual const& equal) :
         equal_{equal}, items_{items},
@@ -825,17 +783,17 @@ public:
             items_, hash, bits::GetKey{}, default_prg_t{})} {
     }
 
-    explicit constexpr unordered_map(container_type items) :
-        unordered_map{items, Hash{}, KeyEqual{}} {
-    }
+    // explicit constexpr unordered_map(container_type items) :
+    //     unordered_map{items, Hash{}, KeyEqual{}} {
+    // }
 
-    constexpr unordered_map(std::initializer_list<value_type> items,
-                            Hash const& hash, KeyEqual const& equal) :
-        unordered_map{container_type{items}, hash, equal} {
-        constexpr_assert(
-            items.size() == N,
-            "Inconsistent initializer_list size and type size argument");
-    }
+    // constexpr unordered_map(std::initializer_list<value_type> items,
+    //                         Hash const& hash, KeyEqual const& equal) :
+    //     unordered_map{container_type{items}, hash, equal} {
+    //     constexpr_assert(
+    //         items.size() == N,
+    //         "Inconsistent initializer_list size and type size argument");
+    // }
 
     constexpr unordered_map(std::initializer_list<value_type> items) :
         unordered_map{items, Hash{}, KeyEqual{}} {
@@ -1016,16 +974,31 @@ using string = basic_string<char>;
 } // namespace frozen
 
 int main() {
-    frozen::unordered_map<frozen::string, std::size_t, 5> mp{
+    constexpr frozen::unordered_map<frozen::string, std::size_t, 5> mp{
         {"1", 1},
         {"2", 1},
         {"3", 1},
         {"4", 1},
         {"5", 1},
     };
+    constexpr auto v = mp.at("1");
+    static_assert(v == 1, "");
     if (mp.find("1") != mp.end())
         printf("1");
     if (mp.at("2") == 1)
         printf("2");
+
+
+    {
+        frozen::default_prg_t prg;
+        for (int i = 0; i < 10; ++i)
+            std::cout << prg() << '\n';
+    }
+    std::cout << "\n==========\n\n";
+    {
+        frozen::XorShift32 xs;
+        for (int i = 0; i < 10; ++i)
+            std::cout << xs() << '\n';
+    }
 }
 

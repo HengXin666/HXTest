@@ -5,7 +5,7 @@
 #include <string_view>
 
 template <typename T>
-auto constexpr log(T v) {
+auto constexpr _log(T v) {
     std::size_t n = 0;
     while (v) {
         ++n;
