@@ -155,13 +155,6 @@ public:
     constexpr SeedOrIndex() = default;
 };
 
-struct bucket_size_compare {
-    template <typename B>
-    bool constexpr operator()(B const& b0, B const& b1) const {
-        return b0.size() > b1.size();
-    }
-};
-
 template <size_t M>
 struct PmhBuckets {
     // 第 0 步：存储桶最大值为 2 * sqrt M
@@ -206,7 +199,10 @@ public:
         std::array<BucketRef, M> result{
             makeBucketRefs(std::make_index_sequence<M>())
         };
-        std::sort(result.begin(), result.end(), bucket_size_compare{});
+        // 编译期排序, 按照 桶大小 从大到小 排序
+        std::sort(result.begin(), result.end(), [](BucketRef const& b1, BucketRef const& b2) {
+            return b1.size() > b2.size();
+        });
         return result;
     }
 };
@@ -243,14 +239,14 @@ PmhBuckets<M> constexpr makePmhBuckets(const std::array<Item, N>& items,
 // 表示 pmh 算法创建的完美哈希函数
 template <std::size_t M, class Hasher>
 struct PmhTables {
-    uint64_t first_seed_;
-    std::array<SeedOrIndex, M> first_table_;  // 记录种子或者索引
-    std::array<std::size_t, M> second_table_; // 第二层哈希表
-    Hasher hash_;
+    uint64_t _first_seed;
+    std::array<SeedOrIndex, M> _first_table;  // 记录种子或者索引
+    std::array<std::size_t, M> _second_table; // 第二层哈希表
+    Hasher _hash;
 
     template <typename KeyType>
     constexpr std::size_t lookup(const KeyType& key) const {
-        return lookup(key, hash_);
+        return lookup(key, _hash);
     }
 
     // 查找给定的键, 以在 carray<Item， N 中找到其预期索引>
@@ -259,14 +255,14 @@ struct PmhTables {
     constexpr std::size_t lookup(const KeyType& key,
                                  const HasherType& hasher) const {
         auto const d =
-            first_table_[hasher(key, static_cast<size_t>(first_seed_)) % M];
+            _first_table[hasher(key, static_cast<size_t>(_first_seed)) % M];
         // 如果不是种子就直接返回索引
         if (!d.isSeed()) {
             return static_cast<std::size_t>(d.value());
         } // 这是缩小 uint64 -> size_t 但应该没问题
         else {
             // 如果是种子, 就作为种子查第二个哈希表, 得到索引
-            return second_table_[
+            return _second_table[
                 hasher(key, 
                        static_cast<std::size_t>(d.value())
                 ) % M];
