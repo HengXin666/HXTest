@@ -63,9 +63,13 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
             - [实验代码](src/06-std-analyse/test/10-tmp-obj-test/01_tmp_obj_test.cpp)
             - [对返回 A&& 的实验探讨(ub无法展现)](src/06-std-analyse/test/10-tmp-obj-test/02_rxv_ub.cpp)
             - [A&& 导致的悬挂引用(实例)](src/06-std-analyse/test/10-10-tmp-obj-test/03_xv_ub.cpp)
-        - 11-模板函数与类中的模板函数在重载时候的区别
-            - [实验代码](src/06-std-analyse/test/11-template-find/01_test_g_or_class.cpp) (全局模板函数指定具体类型时候, 是当场实例化, 不会二阶段查找; 而类中本身就知道本类的所有声明, 因此可以找到后面的方法声明)
-        - 12-宏魔法学习 (图灵完备的哦)
+        - 11-模板名字查找的实验
+            - [模板函数与类中的模板函数在重载时候的区别](src/06-std-analyse/test/11-template-find/01_test_g_or_class.cpp) (全局模板函数指定具体类型时候, 是当场实例化, 不会二阶段查找; 而类中本身就知道本类的所有声明, 因此可以找到后面的方法声明)
+            - [测试类的特化、偏特化、全特化在某些情况下是否有先后顺序问题](/src/06-std-analyse/test/11-template-find/02_partial_specialization.cpp) (有, 如果主模板被实例化, 而对应匹配的子模板没有实例化(声明顺序引起的), 就会导致原本期望匹配到特化上的, 却匹配到实例化上) (偏特化可以被二阶段查找, 但是如果指定了特化, 二阶段查找会被提前. 导致问题)
+            - [类中也有声明顺序的问题(类方法)](/src/06-std-analyse/test/11-template-find/03_auto_in_class.cpp)
+        - 12-测试反射
+            - [编译期获取成员个数细节](/src/06-std-analyse/test/12-reflection/membersCount.cpp)
+        - 13-宏魔法学习 (图灵完备的哦)
             - [目录](src/06-std-analyse/test/13-MacroMagic/)
 7. QT
    - 01-QML [QML-目录](./src/07-qt/01-qml/) | 笔记: [现代C++QT-QML](https://hengxin666.github.io/HXLoLi/docs/%E7%A8%8B%E5%BA%8F%E8%AF%AD%E8%A8%80/C++/%E7%8E%B0%E4%BB%A3C++/%E7%8E%B0%E4%BB%A3C++QT/QML/Window%E4%BB%8B%E7%BB%8D%E4%B8%B6%E5%88%9D%E8%AF%86)
