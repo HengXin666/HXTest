@@ -24,14 +24,11 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
         - 02-tuple
             - [tuple](./src/06-std-analyse/demo/02-tuple/01_tuple.cpp) (包含`get(tuple)`、`tuple_size_v`、`make_tuple`、`tie`的实现, *~~引用多态真奇妙~~*)
             - [trivially_copyable的tuple](./src/06-std-analyse/demo/02-tuple/02_tuple.cpp)
-        
         - 03-memory
             - [unique_ptr](./src/06-std-analyse/demo/03-memory/01_UniquePtr.cpp)
             - [shared_ptr](./src/06-std-analyse/demo/03-memory/02_SharedPtr.cpp)
-
         - 04-sort
             - [sort](./src/06-std-analyse/demo/04-sort/01_sort.cpp) (一个支持迭代器、谓词的单边快排)
-
         - 05-完美哈希
             - [gpt给的, 完美哈希源码, 但是数量太多(50)个就不行了](src/06-std-analyse/demo/05-pmh/01_test_pmh_map.cpp)
             - [复制粘贴其他的库来研究源码... 大部分都是编译期的](src/06-std-analyse/demo/05-pmh/02_cp_pmh_test.cpp)
@@ -76,13 +73,13 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
 
 8. OpenGL 图形学
     - [00-测试程序](src/08-OpenGL/demo/00-example/01_test_opengl_is_install.cpp)
-
     - [01-古代OpenGL-V2.0.0版本](src/08-OpenGL/demo/01-opengl-v200)
         - [01-OpenGL基本API函数](src/08-OpenGL/demo/01-opengl-v200/01_opengl_func.cpp)
         - [02-使用三角形绘制圆](src/08-OpenGL/demo/01-opengl-v200/02_opengl_yuan.cpp)
         - [03-回家作业:使用OpenGL绘制OpenCV的Logo](src/08-OpenGL/demo/01-opengl-v200/03_opengl_hw01.cpp) & [带动画版本](src/08-OpenGL/demo/01-opengl-v200/04_opengl_hw01_prime.cpp)
 
 9. OS & 平台API
+    > 特别的, 下面为实验性质, 存在已知Bug, 并且未修复! 正确实现可以看 https://github.com/HengXin666/HXLibs
     - 01-io_uring
         - [基于协程的io_uring简易框架(目前是一个 **带超时** 的 `cin` 示例)](./src/09-os/demo/01-io_uring/02_io_uring_co.cpp)
             - [WhenAny 协程](src/09-os/include/coroutine/awaiter/WhenAny.hpp)
@@ -93,3 +90,8 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
         - [基于协程的IOCP简易框架](src/09-os/demo/03-iocp/01_iocp_test.cpp) 支持超时机制!
             - [TimerLoop](src/09-os/include/coroutine/loop/TimerLoop.hpp) 基于红黑树的协程定时器
             - [RootTask](src/09-os/include/coroutine/task/RootTask.hpp) 可以被分离的协程, 独自成为根协程 (内部必需要有合法的 `co_await`, 否则无法挂起以继续原协程, 从而会导致分离的任务直接运行到结束)
+10. 赤石C++
+    - 01-实现一个 `<-` 左指针运算符
+        - [知己知皮: `->` 运算符重载实验](01-src/10-cs-code/demo/01-left-ptr/01_right_ptr.cpp)
+        - [简单实现一个左指针运算符](src/10-cs-code/demo/01-left-ptr/02_left_ptr.cpp)
+        - [通过宏封装, 让左指针运算符可以注册并反射生成代码](src/10-cs-code/demo/01-left-ptr/03_left_ptr_macro.cpp)

@@ -21,34 +21,34 @@
 #define _HX_NOWARRING_H_
 
 #if defined(_MSC_VER)
-    #define DISABLE_ALL_WARNINGS            \
-        __pragma(warning(push, 0))          \
+    #define HX_NO_WARNINGS_BEGIN                                \
+        __pragma(warning(push, 0))                              \
         __pragma(warning(disable: 4100 4189 4996)) // 可选: MSVC的一些常见噪声
-    #define ENABLE_ALL_WARNINGS             \
+    #define HX_NO_WARNINGS_END                                  \
         __pragma(warning(pop))
 
 #elif defined(__clang__)
-    #define DISABLE_ALL_WARNINGS            \
-        _Pragma("clang diagnostic push")    \
-        _Pragma("clang diagnostic ignored \"-Wall\"")          \
-        _Pragma("clang diagnostic ignored \"-Wextra\"")        \
-        _Pragma("clang diagnostic ignored \"-Wpedantic\"")     \
+    #define HX_NO_WARNINGS_BEGIN                                \
+        _Pragma("clang diagnostic push")                        \
+        _Pragma("clang diagnostic ignored \"-Wall\"")           \
+        _Pragma("clang diagnostic ignored \"-Wextra\"")         \
+        _Pragma("clang diagnostic ignored \"-Wpedantic\"")      \
         _Pragma("clang diagnostic ignored \"-Weverything\"")   // 全关闭
-    #define ENABLE_ALL_WARNINGS             \
+    #define HX_NO_WARNINGS_END                                  \
         _Pragma("clang diagnostic pop")
 
 #elif defined(__GNUC__)
-    #define DISABLE_ALL_WARNINGS            \
-        _Pragma("GCC diagnostic push")      \
-        _Pragma("GCC diagnostic ignored \"-Wall\"")            \
-        _Pragma("GCC diagnostic ignored \"-Wextra\"")          \
+    #define HX_NO_WARNINGS_BEGIN                                \
+        _Pragma("GCC diagnostic push")                          \
+        _Pragma("GCC diagnostic ignored \"-Wall\"")             \
+        _Pragma("GCC diagnostic ignored \"-Wextra\"")           \
         _Pragma("GCC diagnostic ignored \"-Wpedantic\"")
-    #define ENABLE_ALL_WARNINGS             \
+    #define HX_NO_WARNINGS_END                                  \
         _Pragma("GCC diagnostic pop")
 
 #else
-    #define DISABLE_ALL_WARNINGS
-    #define ENABLE_ALL_WARNINGS
+    #define HX_NO_WARNINGS_BEGIN
+    #define HX_NO_WARNINGS_END
 #endif
 
 #endif // !_HX_NOWARRING_H_

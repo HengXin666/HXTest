@@ -67,3 +67,10 @@ if(BUILD_09_OS)
     add_subdirectory(src/09-os)
     message("=-=-=-=-=-=-= Build 09-OS =-=-=-=-=-=-=")
 endif()
+
+option(BUILD_10_CS_CODE "Build 10-cs-code" ON)
+
+if(BUILD_10_CS_CODE)
+    add_subdirectory(src/10-cs-code)
+    message("=-=-=-=-=-=-= Build 10-cs-code =-=-=-=-=-=-=")
+endif()
