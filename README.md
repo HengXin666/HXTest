@@ -95,3 +95,4 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
         - [知己知皮: `->` 运算符重载实验](01-src/10-cs-code/demo/01-left-ptr/01_right_ptr.cpp)
         - [简单实现一个左指针运算符](src/10-cs-code/demo/01-left-ptr/02_left_ptr.cpp)
         - [通过宏封装, 让左指针运算符可以注册并反射生成代码](src/10-cs-code/demo/01-left-ptr/03_left_ptr_macro.cpp)
+        - [赤石 `<一` 运算符, 支持指针类型(雾)](src/10-cs-code/demo/01-left-ptr/04_left_pptr.cpp)
