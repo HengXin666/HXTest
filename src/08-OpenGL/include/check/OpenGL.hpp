@@ -21,15 +21,16 @@
 #define _HX_OPENGL_H_
 
 #include <glad/glad.h>
+#include <GLFW/glfw3.h> // 必须放在 glad/glad.h 后面
 
-#include <HXprint/print.h>
+#include <HXTest.hpp>
 
 namespace HX {
 
 inline void checkOpenGLError(const char* fileName, std::size_t line, const char* code) {
     auto err = glGetError();
     if (err != GL_NO_ERROR) {
-        HX::print::println(fileName, ": ", line, ": ", 
+        log::hxLog.error(fileName, ": ", line, ": ", 
             code, " failed: ", [&]{
             switch (err) {
 #define PER_GL_ERROR(x) case GL_##x: return #x;
@@ -45,6 +46,23 @@ inline void checkOpenGLError(const char* fileName, std::size_t line, const char*
             return "unknown error";
         }());
     }
+}
+
+inline auto* initOpenGL() {
+    if (!glfwInit()) {
+        throw std::runtime_error("failed to initialize GLFW");
+    }
+    auto* window = glfwCreateWindow(960, 720, "Example", NULL, NULL);
+    if (!window) {
+        glfwTerminate();
+        throw std::runtime_error("GLFW failed to create window");
+    }
+    glfwMakeContextCurrent(window);
+    if (!gladLoadGL()) {
+        glfwTerminate();  // 由于 glfwInit 在前, 理论上是需要配套的 glfwTerminate 防止泄漏
+        throw std::runtime_error("GLAD failed to load GL functions");
+    }
+    return window;
 }
 
 } // namespace HX

@@ -78,6 +78,13 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
         - [02-使用三角形绘制圆](src/08-OpenGL/demo/01-opengl-v200/02_opengl_yuan.cpp)
         - [03-回家作业:使用OpenGL绘制OpenCV的Logo](src/08-OpenGL/demo/01-opengl-v200/03_opengl_hw01.cpp) & [带动画版本](src/08-OpenGL/demo/01-opengl-v200/04_opengl_hw01_prime.cpp)
 
+    - 03-三维模型的加载与相机控制
+        - 回顾三角形大作: 从固定的点数量到动态点数量
+            - [动态添加点: 鼠标点击三个点, 绘制三角形](03-src/08-OpenGL/demo/03-LoadingAndCameraControl/01_ClickAddPoint01.cpp)
+            - [鼠标点击: 修改点的位置, 发现没有关联变化](src/08-OpenGL/demo/03-LoadingAndCameraControl/01_ClickAddPoint02.cpp)
+            - [更新存储方式, 关联点变化](src/08-OpenGL/demo/03-LoadingAndCameraControl/01_ClickAddPoint03Ref.cpp)
+        - [OBJ模型简单解析器](src/08-OpenGL/demo/03-LoadingAndCameraControl/02_ObjParser.cpp)
+
 9. OS & 平台API
     > 特别的, 下面为实验性质, 存在已知Bug, 并且未修复! 正确实现可以看 https://github.com/HengXin666/HXLibs
     - 01-io_uring
@@ -90,6 +97,7 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
         - [基于协程的IOCP简易框架](src/09-os/demo/03-iocp/01_iocp_test.cpp) 支持超时机制!
             - [TimerLoop](src/09-os/include/coroutine/loop/TimerLoop.hpp) 基于红黑树的协程定时器
             - [RootTask](src/09-os/include/coroutine/task/RootTask.hpp) 可以被分离的协程, 独自成为根协程 (内部必需要有合法的 `co_await`, 否则无法挂起以继续原协程, 从而会导致分离的任务直接运行到结束)
+
 10. 赤石C++
     - 01-实现一个 `<-` 左指针运算符
         - [知己知皮: `->` 运算符重载实验](01-src/10-cs-code/demo/01-left-ptr/01_right_ptr.cpp)

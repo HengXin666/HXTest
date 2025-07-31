@@ -1,5 +1,6 @@
 #include <check/OpenGL.hpp> // 包括 glad/glad.h
 #include <GLFW/glfw3.h>     // 必须放在 glad/glad.h 后面
+#include <HXprint/print.h> // 兼容
 
 void show() {
     glBegin(GL_TRIANGLES);
