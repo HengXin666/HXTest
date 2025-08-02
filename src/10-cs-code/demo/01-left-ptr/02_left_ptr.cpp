@@ -16,13 +16,26 @@ struct IsCopy {
 };
 
 struct LeftPtr {
-    IsCopy data_1;
+    IsCopy data;
 };
+
+LeftPtr& operator-(LeftPtr& self) noexcept {
+    return self; 
+}
+
+struct __hx_data {};
+
+inline static __hx_data data;
+
+auto operator<(__hx_data, LeftPtr& self) noexcept {
+    return self.data;
+}
 
 HX_NO_WARNINGS_BEGIN
 int main() {
     LeftPtr lp;
-    auto data_1 = &LeftPtr::data_1;
+    // 如何实现一个左指针运算符? data<-obj
+    auto res = data<-lp;
     return 0;
 }
 HX_NO_WARNINGS_END

@@ -153,11 +153,14 @@ int main() {
     LeftPtr lp;
     std::vector<int> arr{1, 2, 3, 4 ,5};
     // auto& res = data_1<-*(self<-(*(self<-lp))); // ub: *nullptr
+    
     auto funcRes01 = func1(1, arr)<-lp;
+    
     auto funcRes02 = func2(1, arr)<-lp;
 
     if (std::any_cast<int>(funcRes01) == funcRes02) {
         log::hxLog.info("对的对的");
+        log::hxLog.warning("res: ", funcRes02);
     } else {
         log::hxLog.debug(arr);
         log::hxLog.error("大错特错", std::any_cast<int>(funcRes01), funcRes02);
