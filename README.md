@@ -83,7 +83,7 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
             - [动态添加点: 鼠标点击三个点, 绘制三角形](03-src/08-OpenGL/demo/03-LoadingAndCameraControl/01_ClickAddPoint01.cpp)
             - [鼠标点击: 修改点的位置, 发现没有关联变化](src/08-OpenGL/demo/03-LoadingAndCameraControl/01_ClickAddPoint02.cpp)
             - [更新存储方式, 关联点变化](src/08-OpenGL/demo/03-LoadingAndCameraControl/01_ClickAddPoint03Ref.cpp)
-        - [OBJ模型简单解析器](src/08-OpenGL/demo/03-LoadingAndCameraControl/02_ObjParser.cpp)
+        - [OBJ模型简单解析器](src/08-OpenGL/demo/03-LoadingAndCameraControl/02_ObjParser01.cpp)
 
 9. OS & 平台API
     > 特别的, 下面为实验性质, 存在已知Bug, 并且未修复! 正确实现可以看 https://github.com/HengXin666/HXLibs
@@ -102,5 +102,5 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
     - 01-实现一个 `<-` 左指针运算符
         - [知己知皮: `->` 运算符重载实验](01-src/10-cs-code/demo/01-left-ptr/01_right_ptr.cpp)
         - [简单实现一个左指针运算符](src/10-cs-code/demo/01-left-ptr/02_left_ptr.cpp)
-        - [通过宏封装, 让左指针运算符可以注册并反射生成代码](src/10-cs-code/demo/01-left-ptr/03_left_ptr_macro.cpp)
+        - [通过宏封装, 让左指针运算符可以注册并反射生成代码, 并且支持左指针调用函数](src/10-cs-code/demo/01-left-ptr/03_left_ptr_macro.cpp)
         - [赤石 `<一` 运算符, 支持指针类型(雾)](src/10-cs-code/demo/01-left-ptr/04_left_pptr.cpp)

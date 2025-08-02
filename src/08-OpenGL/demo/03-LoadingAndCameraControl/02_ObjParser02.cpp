@@ -21,14 +21,6 @@ auto __init__ = []{
 
 namespace HX {
 
-struct Vertex {
-    float x, y, z;
-};
-
-struct Triangle {
-    std::size_t a, b, c;
-};
-
 struct ObjParser {
     void parser(std::string_view path) {
         std::ifstream file{{path.data(), path.size()}};
@@ -74,25 +66,45 @@ struct ObjParser {
 private:
     std::vector<glm::vec3> _vertices;
     std::vector<glm::uvec3> _trinales;
+    
 };
 
 } // namespace HX
 
-void show() {
+glm::vec3 perspective_divide(glm::vec4 pos) {
+    return {pos.x / pos.w, pos.y / pos.w, pos.z / pos.w};
+}
+
+void show(GLFWwindow* window) {
     glBegin(GL_TRIANGLES);
     static auto obj = [] {
         ObjParser res;
         res.parser("./obj/monkey.obj");
         return res;
     }();
+    int w, h;
+    glfwGetWindowSize(window, &w, &h);
+    glm::mat4x4 perspective = glm::perspective(glm::radians(40.0f), (float)w / (float)h, 0.01f, 100.f);
+    
+    // 视角
+    glm::vec3 eye{0, 0, 5};
+    glm::vec3 center{0, 0, 0};
+    glm::vec3 up{0, 1, 0};
+    glm::mat4x4 view = glm::lookAt(eye, center, up);
+
+    glm::mat4x4 model{1};
+
     auto& vertices = obj.getVertices();
     for (auto const& v : obj.getTriangles()) {
-        // glVertex3fv(&vertices[v.x].x);
-        // glVertex3fv(&vertices[v.y].x);
-        // glVertex3fv(&vertices[v.z].x);
-        glVertex3fv(glm::value_ptr(vertices[v.x]));
-        glVertex3fv(glm::value_ptr(vertices[v.y]));
-        glVertex3fv(glm::value_ptr(vertices[v.x]));
+        auto a = vertices[v.x],
+             b = vertices[v.y],
+             c = vertices[v.z];
+        glVertex3fv(glm::value_ptr(
+            perspective_divide(perspective * view * model * glm::vec4(a, 1))));
+        glVertex3fv(glm::value_ptr(
+            perspective_divide(perspective * view * model * glm::vec4(b, 1))));
+        glVertex3fv(glm::value_ptr(
+            perspective_divide(perspective * view * model * glm::vec4(c, 1))));
     }
     CHECK_GL(glEnd());
 }
@@ -103,12 +115,13 @@ int main() {
 
     CHECK_GL(glEnable(GL_POINT_SMOOTH));
     CHECK_GL(glEnable(GL_BLEND));
+    // CHECK_GL(glEnable(GL_DEPTH_TEST)); // 开启深度测试
     CHECK_GL(glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
     CHECK_GL(glPointSize(64.0f));
 
     while (!glfwWindowShouldClose(window)) {
         CHECK_GL(glClear(GL_COLOR_BUFFER_BIT)); // 清空画布
-        show();
+        show(window);
         glfwSwapBuffers(window); // 双缓冲
         glfwPollEvents();
     }
