@@ -23,13 +23,89 @@ auto __init__ = []{
 
 namespace HX {
 
-struct Vertex {
-    float x, y, z;
+// 摄像机类
+struct CameraState {
+    glm::vec3 eye = {0, 0, 5};
+    glm::vec3 lookat = {0, 0, 0};
+    glm::vec3 upVector = {0, 1, 0};
+    glm::vec3 keepUpAxis = {0, 1, 0};
+    float focalLen = 40.0f;
+    float filmHeight = 24.0f;
+    float filmWidth = 32.0f;
+    int width = 1920;
+    int height = 1080;
+
+    // 环绕模式
+    void orbit(glm::vec2 delta) {
+        auto angle_X_inc = delta.x;
+        auto angle_Y_inc = delta.y;
+        auto rotation_pivot = lookat; // 环绕着目标物体
+        auto front_vector = glm::normalize(lookat - eye);
+        auto right_vector = glm::normalize(glm::cross(front_vector, upVector));
+        upVector = glm::normalize(glm::cross(right_vector, front_vector));
+
+        // 第一次旋转: 基于鼠标横轴
+        glm::mat4x4 rotation_matrixX = glm::rotate(glm::mat4x4(1), -angle_X_inc, upVector);
+        // 第二次旋转: 基于鼠标纵轴
+        glm::mat4x4 rotation_matrixY = glm::rotate(glm::mat4x4(1), angle_Y_inc, right_vector);
+        // 先平移到 rotation_pivot 为中心的坐标系, 绕中心旋转, 然后平移回来(经典TRT-1)
+        auto transformation = glm::translate(glm::mat4x4(1), rotation_pivot)
+            * rotation_matrixY * rotation_matrixX
+            * glm::translate(glm::mat4x4(1), -rotation_pivot);
+        // 更新眼睛和物体的位置坐标(其实只需要更新眼睛就行, lookat 作为枢轴是不会变的)
+        eye = glm::vec3(transformation * glm::vec4(eye, 1));
+        lookat = glm::vec3(transformation * glm::vec4(lookat, 1));
+
+        // 尽量保持相机水平线正确(评估右轴错误)
+        float right_o_up = glm::dot(right_vector, keepUpAxis);
+        float right_handness = glm::dot(glm::cross(keepUpAxis, right_vector), front_vector);
+        float angle_Z_err = glm::asin(right_o_up);
+        angle_Z_err *= glm::atan(right_handness);
+        // 向上旋转: 消除相机水平线漂移
+        glm::mat4x4 rotation_matrixZ = glm::rotate(glm::mat4x4(1), angle_Z_err, front_vector);
+        upVector = glm::mat3x3(rotation_matrixZ) * upVector;
+    }
+
+    // drift(转头模式)
+    void drift(glm::vec2 delta) {
+        delta *= -1.0f;
+        delta *= std::atan(filmHeight / (2 * focalLen));
+        orbit(delta);
+    }
+
+    // pan(平移模式)
+
+    // zoom(缩放模式)
+
+    // hitchcock(变焦模式)
+
+    glm::mat4x4 view_matrix() const {
+        return glm::lookAt(eye, lookat, upVector);
+    }
+
+    glm::mat4x4 projection_matrix() {
+        auto fov = 2 * std::atan(filmHeight / (2 * focalLen));
+        auto aspect = (float)width / (float)height;
+        return glm::perspective(fov, aspect, 0.01f, 100.0f);
+    }
 };
 
-struct Triangle {
-    std::size_t a, b, c;
+// 按键状态
+struct MouseState {
+    bool leftClickPress = false;
+    bool rightClickPress = false;
 };
+
+// 获取鼠标当前位置
+glm::vec2 get_cursor_pos(GLFWwindow* window) {
+    double xpos, ypos;
+    glfwGetCursorPos(window, &xpos, &ypos);
+    int width, height;
+    glfwGetWindowSize(window, &width, &height);
+    float x = (float)(2 * xpos / width - 1);
+    float y = (float)(2 * (height - ypos) / height - 1);
+    return glm::vec2(x, y);
+}
 
 struct ObjParser {
     void parser(std::string_view path) {
@@ -80,9 +156,10 @@ private:
 
 } // namespace HX
 
-glm::vec3 perspective_divide(glm::vec4 pos) {
-    return {pos.x / pos.w, pos.y / pos.w, pos.z / pos.w};
-}
+
+CameraState camera;
+MouseState mouse;
+glm::vec2 lastpos; // 当前鼠标位置
 
 // 手动计算法线
 glm::vec3 compute_normal(glm::vec3 a, glm::vec3 b, glm::vec3 c) noexcept {
@@ -112,7 +189,7 @@ void show(GLFWwindow* window) {
     }();
     int w, h;
     glfwGetWindowSize(window, &w, &h);
-    glm::mat4x4 perspective = glm::perspective(glm::radians(40.0f), (float)w / (float)h, 0.01f, 100.f);
+    glm::mat4x4 perspective = camera.projection_matrix();
     
     auto& vertices = obj.getVertices();
     static auto normals = [&] {
@@ -143,10 +220,7 @@ void show(GLFWwindow* window) {
     }();
 
     // 视角
-    glm::vec3 eye{0, 0, 5};
-    glm::vec3 center{0, 0, 0};
-    glm::vec3 up{0, 1, 0};
-    glm::mat4x4 view = glm::lookAt(eye, center, up);
+    glm::mat4x4 view = camera.view_matrix();
 
     glm::mat4x4 model = glm::mat4x4{1.f};
     model = glm::scale(model, glm::vec3(0.7f));
@@ -202,6 +276,48 @@ int main() {
     CHECK_GL(glEnable(GL_LIGHT0));           // 启用 0 号光源 (古代特性)
     CHECK_GL(glEnable(GL_COLOR_MATERIAL));   // 启用材质颜色追踪 (古代特性)
     CHECK_GL(glEnable(GL_NORMALIZE));        // 法线归一化
+
+    // 绑定鼠标移动回调
+    glfwSetCursorPosCallback(window, [](
+        [[maybe_unused]] GLFWwindow* window, double xpos, double ypos
+    ) {
+        int width, height;
+        // 获取窗口大小
+        glfwGetWindowSize(window,  &width, &height);
+
+        // 映射到 [-1, 1], 除以对应的宽、高, 以保证宽高比
+        auto x = static_cast<float>(2 * xpos / width - 1);
+        // 注意因为窗口坐标是左上原点, y 正轴向下, 所以 转换需要 height - ypos
+        auto y = static_cast<float>(2 * (height - ypos) / height - 1);
+        glm::vec2 pos = {x, y}; // @todo 设置光源
+
+        // 计算变化量: 是本次鼠标移动和上一次移动的变化量, 而不是和按下鼠标那一刻相比!
+        auto delta = glm::fract((pos - lastpos) * 0.5f + 0.5f) * 2.f - 1.f;
+        // 按键状态
+        if (mouse.rightClickPress) {
+            camera.drift(delta);
+        } else if (mouse.leftClickPress) {
+            camera.orbit(delta);
+        }
+        lastpos = pos;
+    });
+
+    // 绑定鼠标点击事件
+    glfwSetMouseButtonCallback(window, [](
+        [[maybe_unused]] GLFWwindow* window, int btn, int action, [[maybe_unused]] int mods
+    ) {
+        switch (btn) {
+        case GLFW_MOUSE_BUTTON_LEFT:
+            mouse.leftClickPress = action == GLFW_PRESS;
+            break;
+        case GLFW_MOUSE_BUTTON_RIGHT:
+            mouse.rightClickPress = action == GLFW_PRESS;
+            break;
+        default:
+            break;
+        }
+    });
+
     glColor3f(0.9f, 0.6f, 0.1f);
     while (!glfwWindowShouldClose(window)) {
         CHECK_GL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)); // 清空画布

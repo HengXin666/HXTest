@@ -150,13 +150,13 @@ template <typename T>
 
 HX_NO_WARNINGS_BEGIN
 int main() {
-    LeftPtr lp;
     std::vector<int> arr{1, 2, 3, 4 ,5};
     // auto& res = data_1<-*(self<-(*(self<-lp))); // ub: *nullptr
     
-    auto funcRes01 = func1(1, arr)<-lp;
-    
-    auto funcRes02 = func2(1, arr)<-lp;
+    LeftPtr obj;
+    auto res = data_1<-obj;
+    auto funcRes01 = func1(1, arr)<-obj;
+    auto funcRes02 = func2(1, arr)<-obj;
 
     if (std::any_cast<int>(funcRes01) == funcRes02) {
         log::hxLog.info("对的对的");
