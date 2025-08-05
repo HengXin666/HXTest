@@ -25,7 +25,7 @@ LeftPtr& operator-(LeftPtr& self) noexcept {
 
 struct __hx_data {};
 
-inline static __hx_data data;
+inline __hx_data data;
 
 auto operator<(__hx_data, LeftPtr& self) noexcept {
     return self.data;
