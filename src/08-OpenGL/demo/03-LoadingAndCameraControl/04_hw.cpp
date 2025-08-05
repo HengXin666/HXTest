@@ -271,10 +271,10 @@ glm::vec3 compute_normal_biased(glm::vec3 a, glm::vec3 b, glm::vec3 c) noexcept 
 }
 
 template <bool IsSmooth = false> // 是否为平滑模式
-void show(GLFWwindow* window) {
+void show(GLFWwindow* window, glm::mat4x4 model) {
     static auto obj = [] {
         ObjParser res;
-        res.parser("./obj/monkey.obj");
+        res.parser("./obj/opencvpart.obj");
         return res;
     }();
     int w, h;
@@ -311,13 +311,6 @@ void show(GLFWwindow* window) {
 
     // 视角
     glm::mat4x4 view = camera.view_matrix();
-
-    glm::mat4x4 model = glm::mat4x4{1.f};
-    model = glm::scale(model, glm::vec3(0.7f));
-    model = IsSmooth
-        ? glm::translate(glm::mat4x4(1), 1.5f * glm::vec3(0.8f, 0, 0)) * model
-        : glm::translate(glm::mat4x4(1), -1.5f * glm::vec3(0.8f, 0, 0)) * model;
-
     glm::mat4x4 viewModel = view * model; // ModelView
 
     // 加载投影矩阵
@@ -429,14 +422,35 @@ int main() {
             camera.zoom(delta[1]);
         }
     });
+    using namespace std::chrono;
+    float k = 0.618f;
+    float xDown = k * std::sqrt(3.f);
+    float hOpencv = k * 1.f;
 
-    glColor3f(0.9f, 0.6f, 0.1f);
     while (!glfwWindowShouldClose(window)) {
         CHECK_GL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)); // 清空画布
-        show<true>(window);
-        show<false>(window);
+        glColor3f(1.f, 0.f, 0.f);
+        glm::mat4x4 model{1.f};
+        model = glm::translate(model, glm::vec3{hOpencv * 2, 0, 0});
+        model = glm::rotate(model, glm::radians(60.f), glm::vec3{0, 1, 0});
+        show<true>(window, model);
+
+        glColor3f(0.f, 1.f, 0.f);
+        model = glm::mat4x4{1.f};
+        model = glm::translate(model, glm::vec3{-hOpencv, 0, -xDown});
+        model = glm::rotate(model, glm::radians(180.f), glm::vec3{0, 1, 0});
+        show<true>(window, model);
+
+        glColor3f(0.f, 0.f, 1.f);
+        model = glm::mat4x4{1.f};
+        model = glm::translate(model, glm::vec3{-hOpencv, 0, xDown});
+        model = glm::rotate(model, glm::radians(240.f), glm::vec3{0, 1, 0});
+        show<true>(window, model);
+
         glfwSwapBuffers(window); // 双缓冲
         glfwPollEvents();
+
+        std::this_thread::sleep_for(0.01s);
     }
     return 0;
 }

@@ -18,7 +18,7 @@ auto __init__ = []{
     } catch (const std::filesystem::filesystem_error& e) {
         log::hxLog.error("Error:", e.what());
     }
-    return 0;
+    return 0;   
 }();
 
 namespace HX {

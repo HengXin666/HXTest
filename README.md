@@ -66,7 +66,7 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
             - [类中也有声明顺序的问题(类方法)](/src/06-std-analyse/test/11-template-find/03_auto_in_class.cpp)
         - 12-测试反射
             - [编译期获取成员个数细节](/src/06-std-analyse/test/12-reflection/membersCount.cpp)
-        - 13-宏魔法学习 (图灵完备的哦)
+        - 13-宏魔法学习 ~~(图灵完备的哦)~~
             - [目录](src/06-std-analyse/test/13-MacroMagic/)
 7. QT
    - 01-QML [QML-目录](./src/07-qt/01-qml/) | 笔记: [现代C++QT-QML](https://hengxin666.github.io/HXLoLi/docs/%E7%A8%8B%E5%BA%8F%E8%AF%AD%E8%A8%80/C++/%E7%8E%B0%E4%BB%A3C++/%E7%8E%B0%E4%BB%A3C++QT/QML/Window%E4%BB%8B%E7%BB%8D%E4%B8%B6%E5%88%9D%E8%AF%86)
@@ -85,6 +85,8 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
             - [更新存储方式, 关联点变化](src/08-OpenGL/demo/03-LoadingAndCameraControl/01_ClickAddPoint03Ref.cpp)
         - [OBJ模型简单解析器 + 手动计算法线](src/08-OpenGL/demo/03-LoadingAndCameraControl/02_ObjParser01.cpp)
         - [OBJ模型简单解析器(支持解析法线和贴图)](src/08-OpenGL/demo/03-LoadingAndCameraControl/02_ObjParser02.cpp)
+        - [已经支持摄像机5种模式的平直/平滑双🐒渲染](src/08-OpenGL/demo/03-LoadingAndCameraControl/03_CameraState.cpp)
+        - [回家作业:使用OpenGL绘制OpenCV的Logo(3D带摄像机)](src/08-OpenGL/demo/03-LoadingAndCameraControl/04_hw.cpp)
 
 9. OS & 平台API
     > 特别的, 下面为实验性质, 存在已知Bug, 并且未修复! 正确实现可以看 https://github.com/HengXin666/HXLibs
