@@ -39,7 +39,7 @@ struct IsCopy {
     }                                                                          \
                                                                                \
     namespace {                                                                \
-    [[maybe_unused]] inline constexpr static __my_metadata__::HX_JOIN(         \
+    [[maybe_unused]] inline constexpr __my_metadata__::HX_JOIN(                \
         HX_JOIN(__hx_my_, __LINE__), __NAME__) __NAME__;                       \
     }                                                                          \
                                                                                \

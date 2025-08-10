@@ -14,12 +14,13 @@ inline void myShow() {
 int main() {
     fun1();
     printf("main -> i: %d\n", ++i);
-    printf("main看到的 %p\n", &look);
+    printf("main看到的 %p\n", (void *)&look);
     look("main");
     look("xxx");
     myShow();
 
     std::cout << C{}.s.size() << '\n';
 
+    std::cout << "main: " << &abcBool << '\n';
     return 0;
 }

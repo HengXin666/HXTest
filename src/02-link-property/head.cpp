@@ -10,8 +10,10 @@ inline void myShow() {
 
 void fun1() {
     printf("fun -> i: %d\n", ++i);
-    printf("fun看到的: %p\n", &look);
+    printf("fun看到的: %p\n", (void *)&look);
     look("fun");
     look("yyy");
     myShow();
+
+    std::cout << "func: " <<  &abcBool << '\n';
 }

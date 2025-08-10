@@ -46,4 +46,6 @@ void Dog::eat() {}
 
 inline void myShow();
 
+inline static bool abcBool = false;
+
 #endif // !_HX_HEAD_H_
