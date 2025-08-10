@@ -39,6 +39,26 @@ public:
     }
 };
 
+///////////////////////////////////////////
+
+template <typename T = int>
+struct A;
+
+template <typename T>
+auto func(A<T> a) {
+    return a.data;
+}
+
+template <typename T>
+struct A {
+    T data;
+};
+
+auto __main__ = [] {
+    [[maybe_unused]] auto res = func(A<double>{}); // <---
+    return 0;
+}();
+
 HX_NO_WARNINGS_BEGIN
 int main() {
     Message msg {

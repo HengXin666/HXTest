@@ -1,4 +1,8 @@
 #include <HXTest.hpp>
+
+#include <HXAv.hpp>
+HX_AV_INFO(__HX_AV_INFO__)
+
 #include <memory>
 #include <vector>
 

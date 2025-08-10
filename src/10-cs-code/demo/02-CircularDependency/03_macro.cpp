@@ -13,6 +13,8 @@ template <typename _AT_GT, typename>
 // 在类或者函数内定义时候的声明
 #define AT_D(__TYPE__) __TYPE__<_AT_GT>
 
+////////////////////////////////////////////
+
 GLOBAL_STATEMENT(class Message); // 前向声明
 GLOBAL_STATEMENT(class User);    // 前向声明
 
