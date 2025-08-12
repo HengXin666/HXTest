@@ -64,6 +64,7 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
             - [模板函数与类中的模板函数在重载时候的区别](src/06-std-analyse/test/11-template-find/01_test_g_or_class.cpp) (全局模板函数指定具体类型时候, 是当场实例化, 不会二阶段查找; 而类中本身就知道本类的所有声明, 因此可以找到后面的方法声明)
             - [测试类的特化、偏特化、全特化在某些情况下是否有先后顺序问题](/src/06-std-analyse/test/11-template-find/02_partial_specialization.cpp) (有, 如果主模板被实例化, 而对应匹配的子模板没有实例化(声明顺序引起的), 就会导致原本期望匹配到特化上的, 却匹配到实例化上) (偏特化可以被二阶段查找, 但是如果指定了特化, 二阶段查找会被提前. 导致问题)
             - [类中也有声明顺序的问题(类方法)](/src/06-std-analyse/test/11-template-find/03_auto_in_class.cpp)
+            - [模板匹配问题: 字符串数组 和 字符指针 隐式转换引发的二义性](src/06-std-analyse/test/11-template-find/04_wchar_t.cpp)
         - 12-测试反射
             - [编译期获取成员个数细节](/src/06-std-analyse/test/12-reflection/membersCount.cpp)
         - 13-宏魔法学习 ~~(图灵完备的哦)~~
