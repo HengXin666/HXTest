@@ -67,6 +67,7 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
             - [模板匹配问题: 字符串数组 和 字符指针 隐式转换引发的二义性](src/06-std-analyse/test/11-template-find/04_wchar_t.cpp)
         - 12-测试反射
             - [编译期获取成员个数细节](/src/06-std-analyse/test/12-reflection/membersCount.cpp)
+            - [实现魔法枚举: 支持无宏的, 从枚举反射到字符串和字符串转枚举](12-reflection/../src/06-std-analyse/test/12-reflection/enum.cpp) & [在线跨平台测试](https://godbolt.org/z/7o4eoWvf3), 目前实现是C++20的, 可以轻易下凡到 C++17 (C++17 以下的不行, 因为我需要逗号表达式!, 都 5202年了, 只能用 C++14 以下的都是 **垃圾**!!)
         - 13-宏魔法学习 ~~(图灵完备的哦)~~
             - [目录](src/06-std-analyse/test/13-MacroMagic/)
 7. QT
