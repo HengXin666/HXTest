@@ -1,10 +1,14 @@
 #include <HXTest.hpp>
 
-enum class EnumClass {
-    A = 0,
-    B = 2,
-    C = 4
+struct __xxx__ {
+    enum class EnumClass {
+        A = 0,
+        B = 2,
+        C = 4
+    };
 };
+
+using EnumClass = __xxx__::EnumClass;
 
 namespace HX {
 
@@ -56,7 +60,7 @@ inline constexpr std::string_view getEnumName() {
 #endif
     [&] {
         // 如果是 enum class, 那么会有 Type::name
-        auto pos = split.find("::");
+        auto pos = split.rfind("::");
         if (pos == std::string_view::npos) {
             return;
         }
