@@ -120,5 +120,14 @@ int main() {
         log::hxLog.error("大错特错!");
     }
     log::hxLog.info(findEnumName(toA));
+
+    enum class Sizeof_1 : char {};
+    enum class Sizeof_4 : uint32_t {};
+    enum class Sizeof_8 : uint64_t {};
+
+    static_assert(sizeof(Sizeof_1) == 1, "");
+    static_assert(sizeof(Sizeof_4) == 4, "");
+    static_assert(sizeof(Sizeof_8) == 8, "");
+
     return 0;
 }
