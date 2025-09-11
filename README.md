@@ -68,7 +68,7 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
         - 12-测试反射
             - [编译期获取成员个数细节](/src/06-std-analyse/test/12-reflection/membersCount.cpp)
             - [实现魔法枚举: 支持无宏的, 从枚举反射到字符串和字符串转枚举](/src/06-std-analyse/test/12-reflection/enum.cpp) & [在线跨平台测试(非最新代码)](https://godbolt.org/z/7o4eoWvf3), 目前实现是C++20的, 可以轻易下凡到 C++17 (C++17 以下的不行, 因为需要编译器提供的宏)
-            - [实现反射: 从类型反射到字符串(不包含模板)](/src/06-std-analyse/test/12-reflection/structName.cpp) (C++17) & [在线跨平台测试](https://godbolt.org/z/o1sMYs15j)
+            - [实现反射: 从类型反射到字符串(不包含模板)](/src/06-std-analyse/test/12-reflection/structName.cpp) (C++17) & [](https://godbolt.org/z/o1sMYs15j)
         - 13-宏魔法学习 ~~(图灵完备的哦)~~
             - [目录](src/06-std-analyse/test/13-MacroMagic/)
 7. QT
