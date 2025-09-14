@@ -17,23 +17,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef _HX_EVENT_LOOP_H_
-#define _HX_EVENT_LOOP_H_
 
 #include <thread>
 #include <chrono>
 #include <coroutine>
 
 #if defined (_WIN32)
-#include <unordered_set>
 #include <array>
 #endif
 
 #include <HXLibs/platform/EventLoopApi.hpp>
 
+#include <HXLibs/container/Try.hpp>
 #include <HXLibs/coroutine/task/Task.hpp>
 #include <HXLibs/coroutine/task/AioTask.hpp>
 #include <HXLibs/coroutine/loop/TimerLoop.hpp>
+#include <HXLibs/coroutine/concepts/Awaiter.hpp>
 #include <HXLibs/coroutine/awaiter/WhenAny.hpp>
 #include <HXLibs/exception/ErrorHandlingTools.hpp>
 
@@ -211,7 +210,7 @@ struct Iocp {
             nullptr,
             0,
             0))}
-        , _runingHandle{}
+        , _taskCnt{}
         , _tasks{}
     {
         platform::internal::InitWin32Api::ensure();
@@ -220,7 +219,7 @@ struct Iocp {
     Iocp& operator=(Iocp&&) = delete;
 
     AioTask makeAioTask() {
-        return {_iocpHandle, _runingHandle};
+        return {_iocpHandle, _taskCnt};
     }
 
     /**
@@ -230,7 +229,7 @@ struct Iocp {
      * @return false 无任务
      */
     bool isRun() const {
-        return _runingHandle.size();
+        return _taskCnt._numSqesPending || _taskCnt._runingHandle.size();
     }
 
     void run(std::optional<std::chrono::system_clock::duration> timeout) {
@@ -289,27 +288,13 @@ BOOL GetQueuedCompletionStatusEx(
             _tasks.push_back(task->_self._previous);
         }
 
+        
         for (const auto& t : _tasks) {
             t.resume();
         }
-
+        
+        _taskCnt._numSqesPending -= static_cast<std::size_t>(n);
         _tasks.clear();
-    }
-
-    /**
-     * @brief 主动泄漏 fd, 以退出事件循环 (注意, 应该在保存好fd, 以便最后的时候进行释放)
-     * @param socketFd
-     */
-    void leak(::SOCKET socketFd) {
-        _runingHandle.erase(reinterpret_cast<::HANDLE>(socketFd));
-    }
-
-    /**
-     * @brief 主动恢复 fd, 以便可以继续阻塞事件循环, 直到事件全部完成
-     * @param socketFd 
-     */
-    void heal(::SOCKET socketFd) {
-        _runingHandle.insert(reinterpret_cast<::HANDLE>(socketFd));
     }
 
     ~Iocp() noexcept {
@@ -320,7 +305,7 @@ BOOL GetQueuedCompletionStatusEx(
 
 private:
     ::HANDLE _iocpHandle;
-    std::unordered_set<::HANDLE> _runingHandle;
+    TaskCnt _taskCnt;
     std::vector<std::coroutine_handle<>> _tasks;
 };
 
@@ -349,11 +334,64 @@ struct EventLoop {
         , _timerLoop{}
     {}
 
+    /**
+     * @brief 启动协程, 协程内部如果挂起, 应该调用 run() 进入事件循环, 以恢复挂起.
+     * @tparam T 
+     * @param mainTask 
+     */
     template <CoroutineObject T>
     void start(T& mainTask) {
         static_cast<std::coroutine_handle<>>(mainTask).resume();
     }
+
+    /**
+     * @brief 同步调用协程, 如果协程内部抛出异常, 则该异常会在 sync 重新抛出
+     * @warning 应该保证事件循环为空, 否则会抛出异常.
+     * @tparam T 
+     * @tparam Res 
+     * @param mainTask 
+     * @return Res 协程返回值
+     */
+    template <CoroutineObject T, typename Res = AwaiterReturnValue<T>>
+    Res sync(T&& mainTask) {
+        auto t = trySync(std::forward<T>(mainTask));
+        if (!t) [[unlikely]] {
+            t.rethrow();
+        }
+        if constexpr (!std::is_void_v<Res>) {
+            return t.move();
+        }
+    }
+
+    template <CoroutineObject T, typename Res = AwaiterReturnValue<T>>
+    container::Try<Res> trySync(T&& mainTask) {
+        if (_eventDrive.isRun()) [[unlikely]] {
+            // 如果触发下面, 极有可能先前进行了协程挂起而没有恢复, 或者当前为协程语义环境
+            // 需要先调用 run(), 方可调用 sync(), 以防止可能的死锁
+            throw std::runtime_error{"Unexpected call"};
+        }
+        container::Try<Res> res;
+        auto task = [&res, _mainTask = std::move(mainTask)]() mutable -> Task<> {
+            try {
+                if constexpr (!std::is_void_v<Res>) {
+                    res.setVal(co_await _mainTask);
+                } else {
+                    co_await _mainTask;
+                    res.setVal(container::NonVoidType<>{});
+                }
+            } catch (...) {
+                res.setException(std::current_exception());
+            }
+        };
+        auto coTask = task();
+        start(coTask);
+        run();
+        return res;
+    }
     
+    /**
+     * @brief 启动事件循环
+     */
     void run() {
         for (;;) {
             auto timeout = _timerLoop.run();
@@ -367,10 +405,18 @@ struct EventLoop {
         }
     }
 
+    /**
+     * @brief 创建协程定时器
+     * @return auto 
+     */
     auto makeTimer() {
         return TimerLoop::makeTimer(_timerLoop);
     }
 
+    /**
+     * @brief 创建异步IO协程任务
+     * @return decltype(auto) 
+     */
     decltype(auto) makeAioTask() {
         return _eventDrive.makeAioTask();
     }
@@ -389,4 +435,3 @@ private:
 
 } // namespace HX::coroutine
 
-#endif // !_HX_EVENT_LOOP_H_

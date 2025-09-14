@@ -17,8 +17,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef _HX_CONNECTION_HANDLER_H_
-#define _HX_CONNECTION_HANDLER_H_
 
 #include <HXLibs/coroutine/task/RootTask.hpp>
 #include <HXLibs/coroutine/loop/EventLoop.hpp>
@@ -35,7 +33,7 @@ namespace HX::net {
 struct ConnectionHandler {
 
     template <typename Timeout>
-        requires(requires { Timeout::Val; })
+        requires(utils::HasTimeNTTP<Timeout>)
     static coroutine::RootTask<> start(
         SocketFdType fd,
         std::atomic_bool const& isRun,
@@ -70,7 +68,7 @@ struct ConnectionHandler {
                 // 写 (由端点内部完成)
 
                 // 清空
-                req.clear();
+                co_await req.clear();
                 res.clear();
             }
         } catch (std::exception const& err) {
@@ -88,4 +86,3 @@ struct ConnectionHandler {
 
 } // namespace HX::net
 
-#endif // !_HX_CONNECTION_HANDLER_H_

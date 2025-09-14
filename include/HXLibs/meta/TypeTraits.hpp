@@ -17,8 +17,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef _HX_TYPE_TRAITS_H_
-#define _HX_TYPE_TRAITS_H_
 
 #include <variant>
 #include <optional>
@@ -119,10 +117,17 @@ consteval std::size_t findUniqueConstructibleIndex() noexcept {
  * @tparam Args 
  */
 template <typename T, typename U, typename... Args>
-constexpr bool isConstructible = requires {
+constexpr bool IsConstructibleVal = requires {
     T {{Args{}}..., {U{}}};
 };
 
+/**
+ * @brief 判断类型是否全部相同
+ * @tparam T0 
+ * @tparam Ts 
+ */
+template <typename T0, typename... Ts>
+constexpr bool IsAllSameVal = (std::is_same_v<T0, Ts> && ...);
+
 } // namespace HX::meta
 
-#endif // !_HX_TYPE_TRAITS_H_

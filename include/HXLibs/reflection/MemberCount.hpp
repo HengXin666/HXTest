@@ -17,8 +17,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef _HX_MEMBER_COUNT_H_
-#define _HX_MEMBER_COUNT_H_
 
 #include <HXLibs/meta/TypeTraits.hpp>
 #include <HXLibs/reflection/ReflectionTypes.hpp>
@@ -52,11 +50,11 @@ struct AnyPtr {
 
 template <typename T, typename... Args>
 inline constexpr std::size_t membersCountImpl() {
-    if constexpr (meta::isConstructible<T, Any, Args...>) {
+    if constexpr (meta::IsConstructibleVal<T, Any, Args...>) {
         return membersCountImpl<T, Args..., Any>();
-    } else if constexpr (meta::isConstructible<T, AnyOpt, Args...>) {
+    } else if constexpr (meta::IsConstructibleVal<T, AnyOpt, Args...>) {
         return membersCountImpl<T, Args..., AnyOpt>();
-    } else if constexpr (meta::isConstructible<T, AnyPtr, Args...>) {
+    } else if constexpr (meta::IsConstructibleVal<T, AnyPtr, Args...>) {
         return membersCountImpl<T, Args..., AnyPtr>();
     } else {
         return sizeof...(Args);
@@ -105,4 +103,3 @@ constexpr std::size_t membersCountVal = membersCount<T>();
 
 } // namespace HX::reflection
 
-#endif // !_HX_MEMBER_COUNT_H_

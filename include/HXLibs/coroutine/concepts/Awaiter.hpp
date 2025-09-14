@@ -17,8 +17,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef _HX_AWAITER_H_
-#define _HX_AWAITER_H_
 
 #include <coroutine>
 
@@ -41,7 +39,7 @@ concept AwaitableLike = Awaiter<T> || Awaitable<T>;
 
 template <typename T>
 concept CoroutineObject = requires(T&& t) { 
-    typename T::promise_type;
+    typename std::remove_reference_t<std::remove_cv_t<T>>::promise_type;
     static_cast<std::coroutine_handle<>>(t);
 };
 
@@ -58,4 +56,3 @@ using AwaiterReturnValue = decltype([](auto&& t) {
 
 } // namespace HX::coroutine
 
-#endif // !_HX_AWAITER_H_

@@ -17,8 +17,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef _HX_SAFE_QUEUE_H_
-#define _HX_SAFE_QUEUE_H_
 
 #include <queue>
 #include <mutex>
@@ -37,13 +35,7 @@ struct SafeQueue {
         , _mtx{}
     {}
 
-    SafeQueue(SafeQueue const&) = delete;
-    SafeQueue& operator=(SafeQueue const&) = delete;
-
-    decltype(auto) front() const {
-        std::shared_lock _{_mtx};
-        return _queue.front();
-    }
+    SafeQueue& operator=(SafeQueue&&) noexcept = delete;
 
     void pop() {
         std::unique_lock _{_mtx};
@@ -79,4 +71,3 @@ private:
 
 } // namespace HX::container
 
-#endif // !_HX_SAFE_QUEUE_H_

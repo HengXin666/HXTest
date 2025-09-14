@@ -17,8 +17,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef _HX_HTTP_SERVER_H_
-#define _HX_HTTP_SERVER_H_
 
 #include <HXLibs/net/router/Router.hpp>
 #include <HXLibs/net/socket/AddressResolver.hpp>
@@ -56,24 +54,16 @@ public:
      */
     void syncStop() {
         using namespace utils;;
-        _isRun.store(false, std::memory_order_release);
-        std::size_t errCnt = 0;
+        _isRun.store(false, std::memory_order_release);;
         while (_runNum) {
-            HttpClient cli{HttpClientOptions{.timeout = 1_s}};
-            try {            
-                if (cli.get(
+            try {         
+                HttpClient cli{HttpClientOptions{.timeout = 1_s}};
+                cli.get(
                     "http://" + _name + ":" + _port + "/", {{"Connection", "close"}}
-                    ).get().status / 100 == 2
-                ) {
-                    errCnt = 0;
-                } else if (++errCnt > 5) {
-                    // 超过 5 次失败, 则认为服务器已经关闭
-                    // 特别是是对于在 端点 中按照引用, 传入 *this (HttpServer) 的
-                    // 必然是死锁的, 因为当前方法是阻塞的, 希望他是非阻塞的? 也不是不行
-                    break;
-                }
+                ).get();
+                cli.close().wait();
             } catch (...) {
-                break;
+                ;
             }
         }
         log::hxLog.warning("服务器已关闭...");
@@ -90,7 +80,7 @@ public:
 
     /**
     * @brief 为服务器添加一个端点
-    * @tparam Methods 请求类型, 如`GET`、`POST`
+    * @tparam Methods 请求类型, 如`GET`、`POST`; 如果不写, 则全部注册!
     * @tparam Func 端点函数类型
     * @tparam Interceptors 拦截器类型
     * @param key url, 如"/"、"home/{id}"
@@ -100,11 +90,25 @@ public:
     */
     template <HttpMethod... Methods, typename Func, typename... Interceptors>
     HttpServer& addEndpoint(std::string_view path, Func endpoint, Interceptors&&... interceptors) {
-        _router.addEndpoint<Methods...>(
-            path,
-            std::move(endpoint),
-            std::forward<Interceptors>(interceptors)...
-        );
+        if constexpr (sizeof...(Methods) == 0) {
+            _router.addEndpoint<
+                HttpMethod::GET, HttpMethod::HEAD,
+                HttpMethod::POST, HttpMethod::PUT,
+                HttpMethod::TRACE, HttpMethod::PATCH,
+                HttpMethod::CONNECT, HttpMethod::OPTIONS,
+                HttpMethod::DEL
+            >(
+                path,
+                endpoint,
+                interceptors...
+            );
+        } else {
+            _router.addEndpoint<Methods...>(
+                path,
+                std::move(endpoint),
+                std::forward<Interceptors>(interceptors)...
+            );
+        }
         return *this;
     }
 
@@ -115,10 +119,10 @@ public:
      * @param timeout 超时时间 (使用类型 utils::TimeNTTP)
      */
     template <typename Timeout = decltype(utils::operator""_s<'3', '0'>())>
-        requires(requires { Timeout::Val; })
+        requires(utils::HasTimeNTTP<Timeout>)
     void syncRun(
         std::size_t threadNum = std::thread::hardware_concurrency(),
-        Timeout timeout = utils::operator""_s<'3', '0'>()
+        Timeout timeout = {}
     ) {
         asyncRun(threadNum, timeout);
         _threads.clear();
@@ -132,10 +136,10 @@ public:
      * @param timeout 超时时间 (使用类型 utils::TimeNTTP)
      */
     template <typename Timeout = decltype(utils::operator""_s<'3', '0'>())>
-        requires(requires { Timeout::Val; })
+        requires(utils::HasTimeNTTP<Timeout>)
     void asyncRun(
         std::size_t threadNum = std::thread::hardware_concurrency(),
-        Timeout = utils::operator""_s<'3', '0'>()
+        Timeout = {}
     ) {
         if (!_threads.empty()) [[unlikely]] {
             throw std::runtime_error{"The server is already running"};
@@ -162,7 +166,7 @@ public:
 
 private:
     template <typename Timeout>
-        requires(requires { Timeout::Val; })
+        requires(utils::HasTimeNTTP<Timeout>)
     void _sync() {
         try {
             coroutine::EventLoop _eventLoop;
@@ -190,4 +194,3 @@ private:
 
 } // namespace HX::net
 
-#endif // !_HX_HTTP_SERVER_H_

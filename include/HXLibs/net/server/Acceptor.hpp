@@ -17,8 +17,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef _HX_ACCEPTOR_H_
-#define _HX_ACCEPTOR_H_
 
 #include <HXLibs/net/socket/SocketFd.hpp>
 #include <HXLibs/coroutine/task/Task.hpp>
@@ -46,7 +44,7 @@ struct Acceptor {
     Acceptor& operator=(Acceptor&&) noexcept = delete;
 
     template <typename Timeout>
-        requires(requires { Timeout::Val; })
+        requires(utils::HasTimeNTTP<Timeout>)
     coroutine::Task<> start(std::atomic_bool const& isRun) {
         auto serverFd = co_await makeServerFd();
         for (;;) [[likely]] {
@@ -67,7 +65,7 @@ struct Acceptor {
             }
         }
         co_await _eventLoop.makeAioTask().prepClose(serverFd);
-        log::hxLog.info("已退出...", serverFd);
+        log::hxLog.debug("已退出...", serverFd);
     }
 
 private:
@@ -129,4 +127,3 @@ private:
 
 } // namespace HX::net
 
-#endif // !_HX_ACCEPTOR_H_

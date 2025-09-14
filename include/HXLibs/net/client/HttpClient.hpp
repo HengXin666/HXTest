@@ -17,8 +17,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef _HX_HTTP_CLIENT_H_
-#define _HX_HTTP_CLIENT_H_
 
 #include <HXLibs/net/client/HttpClientOptions.hpp>
 #include <HXLibs/net/protocol/http/Request.hpp>
@@ -45,7 +43,7 @@
 namespace HX::net {
 
 template <typename Timeout, typename Proxy>
-    requires(requires { Timeout::Val; })
+    requires(utils::HasTimeNTTP<Timeout>)
 class HttpClient {
 public:
     /**
@@ -53,16 +51,28 @@ public:
      * @param options 选项
      * @param threadNum 线程数
      */
-    HttpClient(HttpClientOptions<Timeout, Proxy>&& options = HttpClientOptions{}, uint32_t threadNum = 1) 
+    HttpClient(HttpClientOptions<Timeout, Proxy> options = HttpClientOptions{}) 
         : _options{std::move(options)}
         , _eventLoop{}
         , _cliFd{kInvalidSocket}
         , _pool{}
         , _host{}
         , _headers{}
+        , _isAutoReconnect{true}
     {
-        _pool.setFixedThreadNum(threadNum);
+        // https://github.com/HengXin666/HXLibs/issues/14
+        // 并发时候可能会对fd并发. 多个不同任务不可能共用流式缓冲区.
+        // 所以, 使用线程池仅需要的是一个任务队列, 和一个任务线程.
+        _pool.setFixedThreadNum(1);
         _pool.run<container::ThreadPool::Model::FixedSizeAndNoCheck>();
+    }
+
+    /**
+     * @brief 设置是否自动重连
+     * @param isAutoReconnect true (默认) 自动重连
+     */
+    void setAutoReconnect(bool isAutoReconnect) noexcept {
+        _isAutoReconnect = isAutoReconnect;
     }
 
     /**
@@ -75,11 +85,74 @@ public:
     }
 
     /**
+     * @brief 分块编码上传文件
+     * @tparam Method 请求方式
+     * @param url 请求 URL
+     * @param path 需要上传的文件路径
+     * @param contentType 正文类型
+     * @param headers 请求头
+     * @return container::FutureResult<>
+     */
+    template <HttpMethod Method>
+    container::FutureResult<ResponseData> uploadChunked(
+        std::string url,
+        std::string path,
+        HttpContentType contentType = HttpContentType::Text,
+        HeaderHashMap headers = {}
+    ) {
+        return _pool.addTask([this,
+                              _url = std::move(url),
+                              _path = std::move(path),
+                              _contentType = contentType,
+                              _headers = std::move(headers)]() {
+            return _eventLoop.sync(coUploadChunked<Method>(
+                std::move(_url),
+                std::move(_path),
+                _contentType,
+                std::move(_headers)
+            ));
+        });
+    }
+
+    /**
+     * @brief 分块编码上传文件
+     * @tparam Method 请求方式
+     * @param url 请求 URL
+     * @param path 需要上传的文件路径
+     * @param contentType 正文类型
+     * @param headers 请求头
+     * @return coroutine::Task<> 
+     */
+    template <HttpMethod Method>
+    coroutine::Task<ResponseData> coUploadChunked(
+        std::string url,
+        std::string path,
+        HttpContentType contentType = HttpContentType::Text,
+        HeaderHashMap headers = {}
+    ) {
+        if (needConnect()) {
+            co_await makeSocket(url);
+        }
+        IO io{_cliFd, _eventLoop};
+        Request req{io};
+        req.setReqLine<Method>(UrlParse::extractPath(url));
+        preprocessHeaders(url, contentType, req);
+        req.addHeaders(std::move(headers));
+        co_await req.sendChunkedReq<Timeout>(path);
+        Response res{io};
+        if (!co_await res.parserRes<Timeout>()) [[unlikely]] {
+            throw std::runtime_error{"Recv Timed Out"};
+        }
+        co_await io.close();
+        co_return res.makeResponseData();
+    }
+
+    /**
      * @brief 发送一个 GET 请求, 其会在后台线程协程池中执行
      * @param url 请求的 URL
-     * @return container::FutureResult<ResponseData> 
+     * @return container::FutureResult<container::Try<ResponseData>> 
      */
-    container::FutureResult<ResponseData> get(
+    container::FutureResult<container::Try<ResponseData>> get(
         std::string url, 
         HeaderHashMap headers = {}
     ) {
@@ -91,7 +164,7 @@ public:
      * @param url 请求的 URL
      * @return coroutine::Task<ResponseData> 
      */
-    coroutine::Task<ResponseData> coGet(
+    coroutine::Task<container::Try<ResponseData>> coGet(
         std::string url,
         HeaderHashMap headers = {}
     ) {
@@ -103,13 +176,13 @@ public:
      * @param url 请求的 URL
      * @param body 请求正文
      * @param contentType 请求正文类型
-     * @return container::FutureResult<ResponseData> 
+     * @return container::FutureResult<container::Try<ResponseData>> 
      */
-    container::FutureResult<ResponseData> post(
+    container::FutureResult<container::Try<ResponseData>> post(
         std::string url,
-        HeaderHashMap headers,
         std::string body,
-        HttpContentType contentType
+        HttpContentType contentType,
+        HeaderHashMap headers = {}
     ) {
         return requst<POST>(
             std::move(url), std::move(headers), 
@@ -123,11 +196,11 @@ public:
      * @param contentType 请求正文类型
      * @return coroutine::Task<ResponseData> 
      */
-    coroutine::Task<ResponseData> coPost(
+    coroutine::Task<container::Try<ResponseData>> coPost(
         std::string url,
-        HeaderHashMap headers,
         std::string body,
-        HttpContentType contentType
+        HttpContentType contentType,
+        HeaderHashMap headers = {}
     ) {
         co_return co_await coRequst<POST>(
             std::move(url), std::move(headers),
@@ -141,10 +214,10 @@ public:
      * @param url url 或者 path (以连接的情况下)
      * @param body 正文
      * @param contentType 正文类型 
-     * @return container::FutureResult<ResponseData> 响应数据
+     * @return container::FutureResult<container::Try<ResponseData>> 响应数据
      */
     template <HttpMethod Method, meta::StringType Str = std::string>
-    container::FutureResult<ResponseData> requst(
+    container::FutureResult<container::Try<ResponseData>> requst(
         std::string url,
         HeaderHashMap headers = {},
         Str&& body = {},
@@ -156,7 +229,7 @@ public:
             return coRequst<Method>(
                 std::move(_url), std::move(_headers),
                 std::move(_body), contentType
-            ).start();
+            ).runSync();
         });
     }
 
@@ -170,45 +243,43 @@ public:
      * @return coroutine::Task<ResponseData> 响应数据
      */
     template <HttpMethod Method, meta::StringType Str = std::string>
-    coroutine::Task<ResponseData> coRequst(
+    coroutine::Task<container::Try<ResponseData>> coRequst(
         std::string url,
         HeaderHashMap headers = {},
         Str&& body = {},
         HttpContentType contentType = HttpContentType::None
     ) {
-        container::FutureResult<ResponseData> res;
         _headers = std::move(headers);
-        auto task = [&, ans = res.getFutureResult()]() -> coroutine::Task<> {
-            try {
-                if (needConnect()) {
-                    co_await makeSocket(url);
-                }
-                ans->setData(co_await sendReq<Method>(
-                    url, std::move(body), contentType)
-                );
-#if defined(_WIN32)
-                    // 主动泄漏 fd, 以退出事件循环 (仅 IOCP)
-                    _eventLoop.getEventDrive().leak(_cliFd);
-#endif // !defined(_WIN32)
-            } catch (...) {
-                ans->unhandledException();
+        co_return _eventLoop.trySync([&]() -> coroutine::Task<ResponseData> {
+            if (needConnect()) {
+                co_await makeSocket(url);
             }
-            co_return;
-        };
-        auto taskMain = task();
-        _eventLoop.start(taskMain);
-        _eventLoop.run();
-        co_return res.get();
+            co_return co_await sendReq<Method>(std::move(url), std::move(body), contentType);
+        }());
     }
 
     /**
      * @brief 建立连接
      * @param url 
-     * @return coroutine::Task<> 
+     * @return coroutine::Task<container::Try<>> 
      */
-    coroutine::Task<> coConnect(std::string url) {
-        co_await makeSocket(url);
-        co_await sendReq<GET>(url);
+    coroutine::Task<container::Try<>> coConnect(std::string_view url) {
+        co_return _eventLoop.trySync([&]() -> coroutine::Task<> {
+            if (needConnect()) {
+                co_await coClose();
+            }
+            co_await makeSocket(url);
+        }());
+    }
+
+    /**
+     * @brief 建立连接
+     * @param url 
+     */
+    container::FutureResult<container::Try<>> connect(std::string url) {
+        return _pool.addTask([this, _url = std::move(url)](){
+            return coConnect(_url).runSync();
+        });
     }
 
     /**
@@ -217,7 +288,7 @@ public:
      */
     container::FutureResult<> close() {
         return _pool.addTask([this] {
-            coClose().start();
+            coClose().runSync();
         });
     }
 
@@ -226,22 +297,14 @@ public:
      * @tparam NowOsType 
      * @return coroutine::Task<> 
      */
-    coroutine::Task<> coClose() {
-        if (_cliFd == kInvalidSocket) {
-            co_return;
-        }
-        auto task = [this] () -> coroutine::Task<> {
+    coroutine::Task<container::Try<>> coClose() {
+        co_return _eventLoop.trySync([this]() -> coroutine::Task<> {
+            if (_cliFd == kInvalidSocket) {
+                co_return;
+            }
             co_await _eventLoop.makeAioTask().prepClose(_cliFd);
             _cliFd = kInvalidSocket;
-        };
-#if defined(_WIN32)
-            // 主动回复 fd, 以维持事件循环 (仅 IOCP)
-            _eventLoop.getEventDrive().heal(_cliFd);
-#endif // !defined(_WIN32)
-        auto taskMain = task();
-        _eventLoop.start(taskMain);
-        _eventLoop.run();
-        co_return;
+        }());
     }
 
     /**
@@ -249,14 +312,17 @@ public:
      * @tparam Func 
      * @param url  ws 的 url, 如 ws://127.0.0.1:28205/ws (如果不对则抛异常)
      * @param func 该声明为 [](WebSocketClient ws) -> coroutine::Task<> { }
-     * @return container::FutureResult<>
+     * @return container::FutureResult<container::Try<Res>>
      */
-    template <typename Func>
-        requires(std::is_same_v<std::invoke_result_t<Func, WebSocketClient>, coroutine::Task<>>)
-    container::FutureResult<> wsLoop(std::string url, Func&& func) {
+    template <
+        typename Func, 
+        typename Res = coroutine::AwaiterReturnValue<std::invoke_result_t<Func, WebSocketClient>>
+    >
+        requires(std::is_same_v<std::invoke_result_t<Func, WebSocketClient>, coroutine::Task<Res>>)
+    container::FutureResult<container::Try<Res>> wsLoop(std::string url, Func&& func) {
         return _pool.addTask([this, _url = std::move(url),
-                              _func = std::forward<Func>(func)] {
-            return coWsLoop(std::move(_url), _func).start();
+                              _func = std::forward<Func>(func)]() mutable {
+            return coWsLoop(std::move(_url), std::forward<Func>(_func)).runSync();
         });
     }
 
@@ -265,24 +331,53 @@ public:
      * @tparam Func 
      * @param url  ws 的 url, 如 ws://127.0.0.1:28205/ws (如果不对则抛异常)
      * @param func 该声明为 [](WebSocketClient ws) -> coroutine::Task<> { }
-     * @return coroutine::Task<> 
+     * @return coroutine::Task<container::Try<Res>> 
      */
-    template <typename Func>
-        requires(std::is_same_v<std::invoke_result_t<Func, WebSocketClient>, coroutine::Task<>>)
-    coroutine::Task<> coWsLoop(std::string url, Func&& func) {
-        std::exception_ptr exceptionPtr{};
+    template <
+        typename Func, 
+        typename Res = coroutine::AwaiterReturnValue<std::invoke_result_t<Func, WebSocketClient>>
+    >
+        requires(std::is_same_v<std::invoke_result_t<Func, WebSocketClient>, coroutine::Task<Res>>)
+    coroutine::Task<container::Try<Res>> coWsLoop(std::string url, Func&& func) {
+        container::Try<Res> res;
         auto taskObj = [&]() -> coroutine::Task<> {
             if (needConnect()) {
                 co_await makeSocket(url);
             }
             IO io{_cliFd, _eventLoop};
-            try {            
-                co_await func(
-                    co_await WebSocketFactory::connect<Timeout>(url, io)
-                );
+            container::Uninitialized<WebSocketClient> ws;
+            try {
+                ws.set(co_await WebSocketFactory::connect<Timeout>(url, io));
             } catch (...) {
-                // 如果内部没有捕获异常, 就重抛给外部
-                exceptionPtr = std::current_exception();
+                res.setException(std::current_exception());
+            }
+            if (!ws.isAvailable()) [[unlikely]] {
+                // 之前的连接断开了, 再次尝试连接
+                if (_isAutoReconnect) [[likely]] {
+                    // 重新建立连接
+                    co_await makeSocket(url);
+                    // 绑定新的 fd
+                    co_await io.bindNewFd(_cliFd);
+                    try {
+                        res.reset();
+                        ws.set(co_await WebSocketFactory::connect<Timeout>(url, io));
+                    } catch(...) {
+                        res.setException(std::current_exception());
+                    }
+                }
+            }
+            if (ws.isAvailable()) [[likely]] {
+                try {
+                    if constexpr (!std::is_void_v<Res>) {
+                        res.setVal(co_await func(ws.move()));
+                    } else {
+                        co_await func(ws.move());
+                        res.setVal(container::NonVoidType<>{});
+                    }
+                } catch (...) {
+                    // 如果内部没有捕获异常, 就重抛给外部
+                    res.setException(std::current_exception());
+                }
             }
             // 断开连接
             co_await io.close();
@@ -291,10 +386,7 @@ public:
         auto taskMain = taskObj();
         _eventLoop.start(taskMain);
         _eventLoop.run();
-        if (exceptionPtr) [[unlikely]] {
-            std::rethrow_exception(exceptionPtr);
-        }
-        co_return;
+        co_return res;
     }
 
     HttpClient& operator=(HttpClient&&) noexcept = delete;
@@ -312,32 +404,36 @@ private:
         AddressResolver resolver;
         UrlInfoExtractor parser{_options.proxy.get().size() ? _options.proxy.get() : url};
         auto entry = resolver.resolve(parser.getHostname(), parser.getService());
-        _cliFd = HXLIBS_CHECK_EVENT_LOOP((
-            co_await _eventLoop.makeAioTask().prepSocket(
-                entry._curr->ai_family,
-                entry._curr->ai_socktype,
-                entry._curr->ai_protocol,
-                0
-            )
-        ));
         try {
-            auto sockaddr = entry.getAddress();
-            co_await _eventLoop.makeAioTask().prepConnect(
-                _cliFd,
-                sockaddr._addr,
-                sockaddr._addrlen
-            );
-            if (_options.proxy.get().size()) {
-                // 初始化代理
-                IO io{_cliFd, _eventLoop};
-                Proxy proxy{io};
-                co_await proxy.connect(_options.proxy.get(), url);
-                io.reset();
+            _cliFd = HXLIBS_CHECK_EVENT_LOOP((
+                co_await _eventLoop.makeAioTask().prepSocket(
+                    entry._curr->ai_family,
+                    entry._curr->ai_socktype,
+                    entry._curr->ai_protocol,
+                    0
+                )
+            ));
+            try {
+                auto sockaddr = entry.getAddress();
+                co_await _eventLoop.makeAioTask().prepConnect(
+                    _cliFd,
+                    sockaddr._addr,
+                    sockaddr._addrlen
+                );
+                if (_options.proxy.get().size()) {
+                    // 初始化代理
+                    IO io{_cliFd, _eventLoop};
+                    Proxy proxy{io};
+                    co_await proxy.connect(_options.proxy.get(), url);
+                    io.reset();
+                }
+                // 初始化连接 (如 Https 握手)
+                co_return;
+            } catch (...) {
+                log::hxLog.error("连接失败");
             }
-            // 初始化连接 (如 Https 握手)
-            co_return;
-        } catch (...) {
-            ;
+        } catch (std::exception const& e) {
+            log::hxLog.error("创建套接字失败:", e.what());
         }
         // 总之得关闭
         co_await _eventLoop.makeAioTask().prepClose(_cliFd);
@@ -363,19 +459,41 @@ private:
         Request req{io};
         req.setReqLine<Method>(UrlParse::extractPath(url));
         preprocessHeaders(url, contentType, req);
-        req._requestHeaders = std::move(_headers);
+        req.addHeaders(std::move(_headers));
         if (body.size()) {
             // @todo 请求体还需要支持一些格式!
             req.setBody(std::forward<Str>(body));
         }
         std::exception_ptr exceptionPtr{};
         try {
-            co_await req.sendHttpReq<Timeout>();
-            Response res{io};
-            if (co_await res.parserRes<Timeout>() == false) [[unlikely]] {
-                // 读取超时
-                throw std::runtime_error{"Send Timed Out"};
+            bool isOkFd = true;
+            try {
+                co_await req.sendHttpReq<Timeout>();
+            } catch (std::system_error const&) {
+                // @todo win 都 💩 没有 throw system_error 怎么办?
+                // e: 大概率是 断开的管道
+                isOkFd = false;
             }
+            Response res{io};
+            do {
+                if (isOkFd && co_await res.parserRes<Timeout>()) {
+                    break;
+                }
+                // 读取超时
+                if (_isAutoReconnect) [[likely]] {
+                    // 重新建立连接
+                    co_await makeSocket(url);
+                    // 绑定新的 fd
+                    co_await io.bindNewFd(_cliFd);
+                    // 重新发送一次请求
+                    co_await req.sendHttpReq<Timeout>();
+                    // 再次解析请求
+                    if (co_await res.parserRes<Timeout>()) [[likely]] {
+                        break;
+                    }
+                }
+                [[unlikely]] throw std::runtime_error{"Send Timed Out"};
+            } while (false);
             io.reset();
             co_return res.makeResponseData();
         } catch (...) {
@@ -383,6 +501,7 @@ private:
         }
         
         log::hxLog.error("解析出错"); // debug
+
         co_await io.close();
         _cliFd = kInvalidSocket;
         std::rethrow_exception(exceptionPtr);
@@ -420,10 +539,11 @@ private:
 
     // 请求头
     HeaderHashMap _headers;
+
+    // 是否自动重连
+    bool _isAutoReconnect;
 };
 
-HttpClient() -> HttpClient<decltype(utils::operator""_ms<'5', '0', '0', '0'>()), Socks5Proxy>;
+HttpClient() -> HttpClient<decltype(utils::operator""_ms<"5000">()), Socks5Proxy>;
 
 } // namespace HX::net
-
-#endif // !_HX_HTTP_CLIENT_H_

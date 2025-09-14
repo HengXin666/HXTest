@@ -17,13 +17,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef _HX_IO_H_
-#define _HX_IO_H_
 
 #include <HXLibs/coroutine/task/Task.hpp>
 #include <HXLibs/coroutine/loop/EventLoop.hpp>
 #include <HXLibs/net/socket/SocketFd.hpp>
 #include <HXLibs/exception/ExceptionMode.hpp>
+#include <HXLibs/utils/TimeNTTP.hpp>
 
 #ifndef NDEBUG
     #include <HXLibs/log/Log.hpp>
@@ -36,10 +35,11 @@ namespace internal {
 #if defined(__linux__)
 
 template <typename Timeout>
+    requires(utils::HasTimeNTTP<Timeout>)
 auto* getTimePtr() noexcept {
     // 为了对外接口统一, 并且尽可能的减小调用次数, 故模板 多实例 特化静态成员, 达到 @cache 的效果
     static auto to = coroutine::durationToKernelTimespec(
-        Timeout::Val
+        Timeout::StdChronoVal
     );
     return &to;
 }
@@ -54,7 +54,7 @@ auto* getTimePtr() noexcept {
  */
 class IO {
 public:
-    inline constexpr static std::size_t kBufMaxSize = 1 << 10;
+    inline constexpr static std::size_t kBufMaxSize = 1 << 14; // 16kb
 
     IO(coroutine::EventLoop& eventLoop)
         : _fd{kInvalidSocket}
@@ -112,7 +112,7 @@ public:
 
 #if defined(__linux__)
     template <typename Timeout>
-        requires(requires { Timeout::Val; })
+        requires(utils::HasTimeNTTP<Timeout>)
     coroutine::Task<coroutine::WhenAnyReturnType<
         coroutine::AioTask,
         decltype(std::declval<coroutine::AioTask>().prepLinkTimeout({}, {}))
@@ -125,7 +125,7 @@ public:
     }
 #elif defined(_WIN32)
     template <typename Timeout>
-        requires(requires { Timeout::Val; })
+        requires(utils::HasTimeNTTP<Timeout>)
     coroutine::Task<
         container::UninitializedNonVoidVariant<uint64_t, void> // 只能显式指定返回值
     > recvLinkTimeout(std::span<char> buf) {                   // 因为 _AioTimeoutTask 是私有字段
@@ -134,7 +134,7 @@ public:
         co_return co_await coroutine::AioTask::linkTimeout(
             _eventLoop.makeAioTask().prepRecv(_fd, buf, 0),
             _eventLoop.makeAioTask().prepLinkTimeout(
-                _eventLoop.makeTimer().sleepFor(Timeout::Val))
+                _eventLoop.makeTimer().sleepFor(Timeout::StdChronoVal))
         );
     }
 #else
@@ -174,7 +174,7 @@ public:
      * @tparam Timeout 
      */
     template <typename Timeout>
-        requires(requires { Timeout::Val; })
+        requires(utils::HasTimeNTTP<Timeout>)
     coroutine::Task<> sendLinkTimeout(std::span<char const> buf) {
 #if defined(__linux__)
         // io_uring 也不保证其可以完全一次性写入...
@@ -206,7 +206,7 @@ public:
             auto res = co_await coroutine::AioTask::linkTimeout(
                 _eventLoop.makeAioTask().prepSend(_fd, buf, 0),
                 _eventLoop.makeAioTask().prepLinkTimeout(
-                    _eventLoop.makeTimer().sleepFor(Timeout::Val))
+                    _eventLoop.makeTimer().sleepFor(Timeout::StdChronoVal))
             );
             if (res.index() == 1) [[unlikely]] {
                 throw std::runtime_error{"is Timeout"}; // 超时了
@@ -236,6 +236,16 @@ public:
     }
 
     /**
+     * @brief 绑定新的 fd
+     * @warning 必须把之前的 fd 给 close 了
+     * @param fd 
+     */
+    coroutine::Task<> bindNewFd(SocketFdType fd) noexcept {
+        co_await close();
+        _fd = fd;
+    }
+
+    /**
      * @brief 清空套接字
      * @warning 请注意, 希望你知道你在做什么! 而不是泄漏套接字!
      * @note 期望编译器可以自己优化下面方法为不调用, 仅为 debug 时候使用.
@@ -243,7 +253,7 @@ public:
     constexpr void reset() noexcept {
 #ifndef NDEBUG
         _fd = kInvalidSocket;
-#endif
+#endif // !NDEBUG
     }
 
     operator coroutine::EventLoop&() {
@@ -267,4 +277,3 @@ private:
 
 } // namespace HX::net
 
-#endif // !_HX_IO_H_

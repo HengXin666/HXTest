@@ -17,8 +17,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef _HX_HTTP_CLIENT_OPTIONS_H_
-#define _HX_HTTP_CLIENT_OPTIONS_H_
 
 #include <string>
 
@@ -43,8 +41,11 @@ struct ProxyType {
     }
 };
 
-template <typename Timeout = decltype(utils::operator""_ms<'5', '0', '0', '0'>()), typename Proxy = Socks5Proxy>
-    requires(requires { Timeout::Val; })
+template <
+    typename Timeout = decltype(utils::operator""_ms<"5000">()),
+    typename Proxy = Socks5Proxy
+>
+    requires(utils::HasTimeNTTP<Timeout>)
 struct HttpClientOptions {
     // 代理地址
     ProxyType<Proxy> proxy = {};
@@ -55,4 +56,3 @@ struct HttpClientOptions {
 
 } // namespace HX::net
 
-#endif // !_HX_HTTP_CLIENT_OPTIONS_H_

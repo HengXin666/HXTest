@@ -17,8 +17,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef _HX_HTTP_H_
-#define _HX_HTTP_H_
 
 #include <string>
 #include <string_view>
@@ -61,6 +59,7 @@ enum class HttpMethod {
     DEL,
 };
 
+inline constexpr auto WS = HttpMethod::GET; // WebSocket
 inline constexpr auto GET = HttpMethod::GET;
 inline constexpr auto POST = HttpMethod::POST;
 inline constexpr auto DEL = HttpMethod::DEL;
@@ -113,4 +112,3 @@ struct RangeRequestView {
 
 } // namespace HX::net
 
-#endif // !_HX_HTTP_H_

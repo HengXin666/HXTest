@@ -17,8 +17,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  * */
-#ifndef _HX_FILE_UTILS_H_
-#define _HX_FILE_UTILS_H_
 
 #include <fstream>
 #include <string>
@@ -30,6 +28,8 @@
 
 #include <HXLibs/coroutine/task/Task.hpp>
 #include <HXLibs/coroutine/loop/EventLoop.hpp>
+
+#include <HXLibs/log/Log.hpp> // debug
 
 /**
  * @brief @todo !!!本类需要大重构!!!
@@ -47,7 +47,7 @@ using platform::ModeType;
  */
 struct FileUtils {
     /// @brief 读取文件buf数组的缓冲区大小
-    inline static constexpr std::size_t kBufMaxSize = 1 << 12;
+    inline static constexpr std::size_t kBufMaxSize = 1 << 17; // 128KB
 public:
     /**
      * @brief 获取文件拓展名 (如`loli.png`->`.png`)
@@ -105,99 +105,11 @@ public:
             std::ostreambuf_iterator<char>(file)
         );
     }
-
-    /**
-     * @brief [异步的]读取文件内容
-     * @param path 文件路径
-     * @param flags 打开方式: OpenMode (枚举 如: OpenMode::Read | OpenMode::Append)
-     * @param mode 文件权限模式, 仅在文件创建时有效 (一般写0644)
-     * @return std::string 文件内容
-     */
-    static HX::coroutine::Task<std::string> asyncGetFileContent(
-        std::string_view path,
-        OpenMode flags = OpenMode::Read,
-        ModeType mode = 0644
-    ) {
-        (void)path;
-        (void)flags;
-        (void)mode;
-#ifdef __HX_TODO__
-        int fd = HX::STL::tools::UringErrorHandlingTools::throwingError(
-            co_await HX::STL::coroutine::loop::IoUringTask().prepOpenat(
-                AT_FDCWD, path.c_str(), static_cast<int>(flags), mode
-            )
-        );
-        std::string res;
-        std::vector<char> buf;
-        buf.reserve(kBufMaxSize);
-        std::size_t len = 0;
-        uint64_t offset = 0;
-        while ((len = static_cast<std::size_t>(
-            co_await HX::STL::coroutine::loop::IoUringTask().prepRead(fd, buf, offset)
-        )) == buf.size()) {
-            res += std::string_view {buf.data(), buf.size()};
-            offset += buf.size();
-        }
-        co_await HX::STL::coroutine::loop::IoUringTask().prepClose(fd);
-        co_return (res.append(std::string_view {buf.data(), len}));
-#else
-        co_return {};
-#endif // !__HX_TODO__
-    }
-
-    /**
-     * @brief [异步的]向文件写入内容
-     * @param path 文件路径
-     * @param content 需要写入的数据
-     * @param flags 打开方式: OpenMode (枚举 如: OpenMode::Write | OpenMode::Append)
-     * @param mode 文件权限模式, 仅在文件创建时有效 (一般写0644)
-     * @return std::string 文件内容
-     */
-    static HX::coroutine::Task<int> asyncPutFileContent(
-        const std::string& path,
-        std::string_view content,
-        OpenMode flags,
-        ModeType mode = 0644
-    ) {
-        (void)path;
-        (void)content;
-        (void)flags;
-        (void)mode;
-#ifdef __HX_TODO__
-        int fd = HX::STL::tools::UringErrorHandlingTools::throwingError(
-            co_await HX::STL::coroutine::loop::IoUringTask().prepOpenat(
-                AT_FDCWD, path.c_str(), static_cast<int>(flags), mode
-            )
-        );
-        // 无需设置 offset, 因为内核会根据 open 的 flags 来
-        int res = co_await HX::STL::coroutine::loop::IoUringTask().prepWrite(
-            fd, content, static_cast<std::uint64_t>(-1)
-        );
-        co_await HX::STL::coroutine::loop::IoUringTask().prepClose(fd);
-        co_return res;
-#else
-        co_return {};
-#endif // !__HX_TODO__
-    }
-
-#ifdef __HX_TODO__
-    /**
-     * @brief 设置套接字为非阻塞
-     * @param fd 
-     * @return int `fcntl` 的返回值
-     */
-    static int setNonBlock(int fd) {
-        int flags = ::fcntl(fd, F_GETFL, 0);
-        if (flags < 0) [[unlikely]] {
-            return errno;
-        }
-        return ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-    }
-#endif // !__HX_TODO__
 };
 
 /**
  * @brief 异步文件类
+ * @note 支持同步操作, 但是同步操作不应该出现在 co_await 协程语义上下文中
  */
 class AsyncFile {
 public:
@@ -230,7 +142,7 @@ public:
 #elif defined(_WIN32)
         auto params =
             platform::Win32FileParamsBuilder(flags).enableIocp(true)
-                                                         .build();
+                                                   .build();
 
         HANDLE fileHandle = ::CreateFileA(
             path.data(),                            // 文件名
@@ -251,15 +163,31 @@ public:
         }
 
         _fd = reinterpret_cast<LocalFdType>(fileHandle);
+        co_return;
 #else
         #error "Unsupported platform"
 #endif
-        co_return;
     }
 
+    /**
+     * @brief 同步打开文件
+     * @param path 文件路径
+     * @param flags 打开方式: OpenMode (枚举 如: OpenMode::Write | OpenMode::Append)
+     * @param mode 文件权限模式, 仅在文件创建时有效 (一般写0644)
+     * @param dirfd 目录文件描述符, 它表示相对路径的基目录; `AT_FDCWD`, 则表示相对于当前工作目录
+     * @return void
+     */
+    void syncOpen(
+        std::string_view path,
+        OpenMode flags = OpenMode::ReadWrite,
+        int dirfd = AT_FDCWD,
+        ModeType mode = 0644
+    ) {
+        _eventLoop.sync(open(path, flags, dirfd, mode));
+    }
 
     /**
-     * @brief 读取文件内容到 buf
+     * @brief 异步读取文件内容到 buf
      * @param buf [out] 读取到的数据
      * @return int 读取的字节数
      */
@@ -274,7 +202,7 @@ public:
     }
 
     /**
-     * @brief 读取文件内容到 buf
+     * @brief 异步读取文件内容到 buf
      * @param buf [out] 读取到的数据
      * @param size 读取的长度
      * @return int 读取的字节数
@@ -289,21 +217,69 @@ public:
         co_return len;
     }
 
-    /**
-     * @brief 将 buf 写入到文件中
-     * @param buf [in] 需要写入的数据
-     * @return int 写入的字节数
-     */
-    coroutine::Task<int> write(std::span<char> buf) {
-        co_return static_cast<int>(HXLIBS_CHECK_EVENT_LOOP(
-            co_await _eventLoop.makeAioTask().prepWrite(
-                _fd, buf, static_cast<std::uint64_t>(-1)
-            )
-        ));
+    coroutine::Task<std::string> readAll() {
+        std::string res;
+        std::vector<char> buf;
+        buf.resize(FileUtils::kBufMaxSize);
+        for (int len = 0; (len = co_await read(buf)); ) {
+            res += std::string_view{buf.data(), static_cast<std::size_t>(len)};
+        }
+        co_return res;
     }
 
     /**
-     * @brief 关闭文件
+     * @brief 同步读取文件内容到 buf
+     * @param buf [out] 读取到的数据
+     * @return int 读取的字节数
+     */
+    int syncRead(std::span<char> buf) {
+        return _eventLoop.sync(read(buf));
+    }
+
+    /**
+     * @brief 同步的读取全部内容到 buf
+     * @return std::string 
+     */
+    std::string syncReadAll() {
+        return _eventLoop.sync(readAll());
+    }
+
+    /**
+     * @brief 同步读取文件内容到 buf
+     * @param buf [out] 读取到的数据
+     * @param size 读取的长度
+     * @return int 读取的字节数
+     */
+    int syncRead(std::span<char> buf, unsigned int size) {
+        return _eventLoop.sync(read(buf, size));
+    }
+
+    /**
+     * @brief 异步将 buf 写入到文件中, 内部保证完全写入
+     * @param buf [in] 需要写入的数据
+     */
+    coroutine::Task<> write(std::span<char const> buf) {
+        for (; !buf.empty(); buf = buf.subspan(
+            static_cast<std::size_t>(HXLIBS_CHECK_EVENT_LOOP(
+                co_await _eventLoop.makeAioTask().prepWrite(
+                    _fd, buf, static_cast<std::uint64_t>(-1)
+                )
+            ))
+        )) {
+            // 文件 大多数情况下内核会尽量写满, 部分写很少见 (但不能依赖这一点!)
+        }
+    }
+
+    /**
+     * @brief 同步将 buf 写入到文件中, 内部保证完全写入
+     * @param buf [in] 需要写入的数据
+     */
+    void syncWrite(std::span<char> buf) {
+        _eventLoop.sync(write(buf));
+    }
+
+    /**
+     * @brief 异步关闭文件
      * @return coroutine::Task<> 
      */
     coroutine::Task<> close() {
@@ -311,6 +287,13 @@ public:
             co_await _eventLoop.makeAioTask().prepClose(_fd)
         );
         _fd = kInvalidLocalFd;
+    }
+
+    /**
+     * @brief 同步关闭文件
+     */
+    void syncClose() {
+        _eventLoop.sync(close());
     }
 
     /**
@@ -326,7 +309,7 @@ public:
 #else
     ~AsyncFile() noexcept(false) {
         if (_fd != kInvalidLocalFd) [[unlikely]] {
-            throw std::runtime_error{"Before that, it is necessary to call close()"};
+            throw std::runtime_error{"[AsyncFile]: Before that, it is necessary to call close()"};
         }
     }
 #endif // !NDEBUG
@@ -353,5 +336,3 @@ constexpr OpenMode operator|(OpenMode lhs, OpenMode rhs) {
 }
 
 } // namespace HX::utils
-
-#endif // _HX_FILE_UTILS_H_

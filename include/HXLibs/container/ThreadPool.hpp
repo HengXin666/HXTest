@@ -17,8 +17,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef _HX_THREAD_POOL_H_
-#define _HX_THREAD_POOL_H_
 
 #include <thread>
 #include <chrono>
@@ -31,6 +29,7 @@
 #include <HXLibs/container/SafeQueue.hpp>
 #include <HXLibs/container/MoveOnlyFunction.hpp>
 #include <HXLibs/container/MoveApply.hpp>
+#include <HXLibs/meta/TypeTraits.hpp>
 
 namespace HX::container {
 
@@ -127,13 +126,14 @@ struct ThreadPool {
     template <typename Func, typename... Args, typename Res = std::invoke_result_t<Func, Args...>>
     FutureResult<Res> addTask(Func&& func, Args&&... args) {
         FutureResult<Res> res;
+        res.via(this);
         auto cb = [func = std::move(func), 
                    ans = res.getFutureResult(),
                    argWap = makePreserveTuple(std::forward<Args>(args)...)
         ]() mutable {
             try {
                 if constexpr (std::is_void_v<Res>) {
-                    ans->setData(NonVoidType<void>{});
+                    ans->setData(NonVoidType<>{});
                     moveApply(std::move(func), std::move(argWap));
                 } else {
                     ans->setData(moveApply(std::move(func), std::move(argWap)));
@@ -236,7 +236,7 @@ private:
     void makeWorker(std::size_t num) {
         for (std::size_t i = 0; i < num; ++i) {
             auto up = std::make_unique<std::thread>([this] {
-                std::decay_t<decltype(_taskQueue.front())> task;
+                std::decay_t<decltype(_taskQueue.frontAndPop())> task;
                 while (_isRun) [[likely]] {
                     {
                         // 挂起, 并等待任务
@@ -330,6 +330,109 @@ private:
     std::atomic_bool _isRun;        // 线程池是否在运行
 };
 
+template <typename T>
+template <typename Func, typename Res>
+    requires (requires (Func func, FutureResult<T>::ArgTryType t) {
+            { func(std::move(t)) } -> std::same_as<Res>;
+        })
+std::conditional_t<
+    IsFutureResultType<Res>, 
+    void, 
+    FutureResult<RemoveTryWarpType<Res>>
+> FutureResult<T>::thenTry(
+    Func&& func
+) && noexcept {
+    if constexpr (IsFutureResultType<Res>) {
+        // 是 FutureResult<FutureResult<T>>
+        _dispatch.get()->addTask([self = std::move(*this),
+                           _func = std::forward<Func>(func)](
+        ) mutable noexcept {
+            using InArgType = typename FutureResult<T>::ArgTryType; // func 参数类型, Try<RemoveTryWarpType<T>>
+            Uninitialized<InArgType> data;
+            try {
+                // 如果获取出错, 说明之前的任务出现异常
+                data.set(self.get());
+            } catch (...) {
+                ;
+            }
+            try {
+                if (data.isAvailable()) {
+                    // 获取完毕, 无异常, 传入 func
+                    _func(InArgType{data.move()});
+                } else {
+                    // 获取失败, 有异常, func 传入 Try<>{errPtr}
+                    _func(InArgType{self._res->getException()});
+                }
+            } catch (...) {
+                // 本次的 func 出现异常
+                ;
+            }
+        });
+    } else {
+        // 不是 FutureResult<FutureResult<T>>
+        auto dispatch = _dispatch.get();
+        FutureResult<RemoveTryWarpType<Res>> res;
+        res.via(dispatch);
+        dispatch->addTask([self = std::move(*this),
+                           _func = std::forward<Func>(func),
+                           ans = res.getFutureResult()](
+        ) mutable noexcept {
+            using InArgType = typename FutureResult<T>::ArgTryType; // func 参数类型, Try<RemoveTryWarpType<T>>
+            Uninitialized<InArgType> data;
+            try {
+                // 如果获取出错, 说明之前的任务出现异常
+                data.set(self.get());
+            } catch (...) {
+                ;
+            }
+            try {
+                if (data.isAvailable()) {
+                    // 获取完毕, 无异常, 传入 func
+                    if constexpr (std::is_void_v<decltype(_func(data.move()))>) {
+                        // func 返回值是 void
+                        _func(InArgType{data.move()});
+                        ans->setData(NonVoidType<>{});
+                    } else if constexpr (IsTryTypeVal<meta::remove_cvref_t<Res>>) {
+                        // 特判如果是 Try 则去掉一层
+                        Uninitialized<Res> funcRes;
+                        funcRes.set(_func(InArgType{data.move()}));
+                        if (funcRes.get().isVal()) {
+                            ans->setData(funcRes.move().move());
+                        } else {
+                            std::rethrow_exception(self._res->getException());
+                        }
+                    } else {            
+                        // func 返回值是任意类型
+                        ans->setData(_func(InArgType{data.move()}));
+                    }
+                } else {
+                    // 获取失败, 有异常, func 传入 Try<>{errPtr}
+                    if constexpr (std::is_void_v<decltype(_func(InArgType{}))>) {
+                        // func 返回值是 void
+                        _func(InArgType{self._res->getException()});
+                        ans->setData(NonVoidType<>{});
+                    } else if constexpr (IsTryTypeVal<meta::remove_cvref_t<Res>>) {
+                        // 特判如果是 Try 则去掉一层
+                        Uninitialized<Res> funcRes;
+                        funcRes.set(_func(InArgType{self._res->getException()}));
+                        if (funcRes.get().isVal()) {
+                            ans->setData(funcRes.move().move());
+                        } else {
+                            std::rethrow_exception(self._res->getException());
+                        }
+                    } else {
+                        // func 返回值是任意类型
+                        ans->setData(_func(InArgType{self._res->getException()}));
+                    }
+                }
+            } catch (...) {
+                // 本次的 func 出现异常
+                ans->unhandledException();
+            }
+        });
+        return res;
+    }
+}
+
 } // namespace HX::container
 
-#endif // !_HX_THREAD_POOL_H_

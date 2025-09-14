@@ -17,8 +17,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef _HX_ROUTER_TREE_H_
-#define _HX_ROUTER_TREE_H_
 
 #include <string>
 #include <vector>
@@ -46,7 +44,7 @@ public:
             co_return co_await res
                 .setResLine(Status::CODE_404)
                 .setContentType(HTML)
-                .setBodyData(
+                .setBody(
     "<!DOCTYPE html><html lang=\"en\">"
     "<head><meta charset=\"UTF-8\"/>"
     "<title>404 Not Found</title>"
@@ -173,4 +171,3 @@ private:
 
 } // namespace HX::net
 
-#endif // !_HX_ROUTER_TREE_H_

@@ -17,8 +17,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  * */
-#ifndef _HX_RESPONSE_H_
-#define _HX_RESPONSE_H_
 
 #include <string>
 #include <string_view>
@@ -43,7 +41,7 @@ namespace HX::net {
  */
 struct ResponseData {
     int status = 0;        // 状态码
-    HeaderHashMap headers; // 响应头
+    HeaderHashMap headers; // 响应头, 应该仅使用英文小写字母
     std::string body;      // 响应体
 };
 
@@ -85,12 +83,12 @@ public:
      * @return coroutine::Task<bool> 是否解析完毕 
      */
     template <typename Timeout = decltype(utils::operator""_s<'3', '0'>())>
-        requires(requires { Timeout::Val; })
+        requires(utils::HasTimeNTTP<Timeout>)
     coroutine::Task<bool> parserRes() {
-        for (std::size_t n = IO::kBufMaxSize; n; n = _parserRes()) {
+        for (std::size_t n = IO::kBufMaxSize; n; n = std::min(_parserRes(), IO::kBufMaxSize)) {
             auto res = co_await _io.recvLinkTimeout<Timeout>(
                 // 保留原有的数据
-                {_recvBuf.data() + _recvBuf.size(),  _recvBuf.data() + _recvBuf.max_size()}
+                {_recvBuf.data() + _recvBuf.size(),  _recvBuf.data() + n}
             );
             if (res.index() == 1) [[unlikely]] {
                 co_return false;  // 超时
@@ -110,7 +108,7 @@ public:
      * @brief 获取协议版本
      * @return std::string 
      */
-    std::string getProtocolVersion() const {
+    std::string const& getProtocolVersion() const {
         return _statusLine[ResponseLineDataType::ProtocolVersion];
     }
 
@@ -118,7 +116,7 @@ public:
      * @brief 获取状态码
      * @return std::string 
      */
-    std::string getStatusCode() const {
+    std::string const& getStatusCode() const {
         return _statusLine[ResponseLineDataType::StatusCode];
     }
 
@@ -126,7 +124,7 @@ public:
      * @brief 获取状态信息
      * @return std::string 
      */
-    std::string getStatusMessage() const {
+    std::string const& getStatusMessage() const {
         return _statusLine[ResponseLineDataType::StatusMessage];
     }
 
@@ -134,7 +132,7 @@ public:
      * @brief 获取响应头键值对 只读引用
      * @return 响应头键值对 (键均为小写)
      */
-    auto const& getHeaders() const {
+    auto const& getHeaders() const noexcept {
         return _responseHeaders;
     }
 
@@ -142,7 +140,7 @@ public:
      * @brief 获取响应头键值对 引用
      * @return 响应头键值对 (键均为小写)
      */
-    auto& getHeaders() {
+    auto& getHeaders() noexcept {
         return _responseHeaders;
     }
 
@@ -150,8 +148,8 @@ public:
      * @brief 获取响应体
      * @return std::string 
      */
-    std::string getBody() const {
-        return _body;
+    std::string getBody() noexcept {
+        return std::move(_body);
     }
 
     /**
@@ -177,7 +175,7 @@ public:
      * @return Response& 可链式调用
      */
     Response& setStatusAndContent(Status status, std::string const& content) {
-        setResLine(status).setContentType(TEXT).setBodyData(content);
+        setResLine(status).setContentType(TEXT).setBody(content);
         return *this;
     }
 
@@ -211,17 +209,22 @@ public:
         co_await file.open(filePath);
         try {
             std::vector<char> buf(utils::FileUtils::kBufMaxSize);
-            while (true) {
-                // 读取文件
-                std::size_t size = static_cast<std::size_t>(co_await file.read(buf));
-                _buildToChunkedEncoding({buf.data(), size});
-                co_await _io.fullySend(_sendBuf);
-                if (size != buf.size()) {
+            // 读取文件
+            std::size_t size = static_cast<std::size_t>(co_await file.read(buf));
+            _buildToChunkedEncoding<true>(size);   // 朴素的版本: len\r\n
+            co_await _io.fullySend(_sendBuf);      // 发送
+            co_await _io.fullySend({buf.data(), size});           // 发送文件
+            for (;;) {
+                if (!size) [[unlikely]] {
                     // 需要使用 长度为 0 的分块, 来标记当前内容实体传输结束
-                    _buildToChunkedEncoding("");
+                    _buildToChunkedEncoding<false, true>(0); // 发送完成的版本: \r\n0\r\n\r\n
                     co_await _io.fullySend(_sendBuf);
                     break;
                 }
+                size = static_cast<std::size_t>(co_await file.read(buf));
+                _buildToChunkedEncoding(size);         // 补充上次的头版本: \r\nlen\r\n
+                co_await _io.fullySend(_sendBuf);      // 发送
+                co_await _io.fullySend({buf.data(), size});           // 发送文件
             }
         } catch (...) {
             // _io.send 会抛异常
@@ -327,7 +330,7 @@ public:
                         if (!size) [[unlikely]] {
                             break;
                         }
-                        co_await _io.fullySend(buf);
+                        co_await _io.fullySend({buf.data(), size});
                         remaining -= size;
                     }
                 } catch (...) {
@@ -405,7 +408,7 @@ public:
                             if (!size) [[unlikely]] {
                                 break;
                             }
-                            co_await _io.fullySend(buf);
+                            co_await _io.fullySend({buf.data(), size});
                             co_await _io.fullySend(CRLF);
                             remaining -= size;
                         }
@@ -437,7 +440,7 @@ public:
                     if (!size) [[unlikely]] {
                         break;
                     }
-                    co_await _io.fullySend(buf);
+                    co_await _io.fullySend({buf.data(), size});
                     remaining -= size;
                 }
             } catch (...) {
@@ -490,12 +493,18 @@ public:
 
     /**
      * @brief 设置响应体
-     * @param data 响应体数据
-     * @return [this&] 可以链式调用
      * @warning 不需要手动写`/r`或`/n`以及尾部的`/r/n`
+     * @tparam S 字符串类型
+     * @param data 信息
+     * @return Request& 
      */
-    Response& setBodyData(const std::string& data) {
-        _body = data;
+    template <typename S>
+        requires (requires (S&& data, std::string s) {
+            s += std::forward<S>(data);
+        })
+    Response& setBody(S&& data) noexcept {
+        _body.clear();
+        _body += std::forward<S>(data);
         return *this;
     }
 
@@ -524,6 +533,14 @@ public:
         _sendBuf.clear();
         _completeResponseHeader = false;
     }
+
+    /**
+     * @brief 获取内部 IO
+     * @return IO& 
+     */
+    IO& getIO() noexcept {
+        return _io;
+    }
 private:
     /**
      * @brief 响应行数据分类
@@ -551,6 +568,8 @@ private:
     std::optional<std::size_t> _remainingBodyLen;   // 仍需读取的请求体长度
     IO& _io;
     bool _completeResponseHeader = false;           //是否解析完成响应头
+
+    friend class WebSocketFactory;
 
     /**
      * @brief [仅服务端] 生成响应行和响应头
@@ -586,20 +605,25 @@ private:
     }
 
     /**
-     * @brief [仅服务端] 将`buf`转化为`ChunkedEncoding`的Body, 放入`_body`以分片发送
-     * @param buf 
+     * @brief [仅服务端] 把 size 大小转换为 16 进制并以符合 ChunkedEncoding 的格式写入 _sendBuf
+     * @param size 内容大小
      * @warning 内部会清空 `_sendBuf`, 再以`ChunkedEncoding`格式写入 buf 到 `_sendBuf`!
      */
-    void _buildToChunkedEncoding(std::string_view buf) {
+    template <bool IsFirst = false, bool IsEnd = false>
+    void _buildToChunkedEncoding(std::size_t size) {
         _sendBuf.clear();
+        if constexpr (!IsFirst) {
+            utils::StringUtil::append(_sendBuf, CRLF);
+        }
 #ifdef HEXADECIMAL_CONVERSION
-        utils::StringUtil::append(_sendBuf, utils::NumericBaseConverter::hexadecimalConversion(buf.size()));
+        utils::StringUtil::append(_sendBuf, utils::NumericBaseConverter::hexadecimalConversion(size));
 #else
-        utils::StringUtil::append(_sendBuf, std::format("{:X}", buf.size())); // 需要十六进制嘞
+        utils::StringUtil::append(_sendBuf, std::format("{:X}", size)); // 需要十六进制嘞
 #endif // !HEXADECIMAL_CONVERSION
         utils::StringUtil::append(_sendBuf, CRLF);
-        utils::StringUtil::append(_sendBuf, buf);
-        utils::StringUtil::append(_sendBuf, CRLF);
+        if constexpr (IsEnd) {
+            utils::StringUtil::append(_sendBuf, CRLF);
+        }
     }
 
     /**
@@ -689,15 +713,11 @@ private:
                 if (_responseHeaders.contains(CONTENT_LENGTH_SV)) { // 存在content-length模式接收的响应体
                     // 是 空行之后 (\r\n\r\n) 的内容大小(char)
                     if (!_remainingBodyLen.has_value()) {
-                        _body = buf;
-                        _remainingBodyLen = std::stoull(_responseHeaders.find(CONTENT_LENGTH_SV)->second) 
-                                          - _body.size();
-                    } else {
+                        _remainingBodyLen = std::stoull(_responseHeaders.find(CONTENT_LENGTH_SV)->second);
+                    }
+                    if (*_remainingBodyLen != 0) {
                         *_remainingBodyLen -= buf.size();
                         _body.append(buf);
-                    }
-
-                    if (*_remainingBodyLen != 0) {
                         _recvBuf.clear();
                         return *_remainingBodyLen;
                     }
@@ -706,6 +726,7 @@ private:
                         if (buf.size() <= *_remainingBodyLen) { // 还没有读取完毕
                             _body += buf;
                             *_remainingBodyLen -= buf.size();
+                            _recvBuf.clear();
                             return IO::kBufMaxSize;
                         } else { // 读取完了
                             _body.append(buf, 0, *_remainingBodyLen);
@@ -713,7 +734,7 @@ private:
                             _remainingBodyLen.reset();
                         }
                     }
-                    while (true) {
+                    for (;;) {
                         std::size_t posLen = buf.find(CRLF);
                         if (posLen == std::string_view::npos) { // 没有读完
                             _recvBuf.moveToHead(buf);
@@ -724,8 +745,8 @@ private:
                             buf = buf.substr(posLen + 2);
                             continue;
                         }
-                        _remainingBodyLen = std::stol(
-                            std::string{buf.substr(0, posLen)}, nullptr, 16
+                        _remainingBodyLen = utils::NumericBaseConverter::strToNum<std::size_t, 16>(
+                            buf.substr(0, posLen)
                         ); // 转换为十进制整数
                         if (!*_remainingBodyLen) { // 解析完毕
                             return 0;
@@ -734,14 +755,17 @@ private:
                         if (buf.size() <= *_remainingBodyLen) { // 没有读完
                             _body += buf;
                             *_remainingBodyLen -= buf.size();
+                            _recvBuf.clear();
                             return IO::kBufMaxSize;
                         }
                         _body.append(buf.substr(0, *_remainingBodyLen));
                         buf = buf.substr(*_remainingBodyLen + 2);
                     }
-                } else if (_responseHeaders.contains("content-range")) {
+                } 
+                // else if (_responseHeaders.contains("content-range")) {
                     // 断点续传 @todo
-                }
+                // }
+                _recvBuf.moveToHead(buf);
                 break;
             }
             [[unlikely]] default:
@@ -755,5 +779,3 @@ private:
 };
 
 } // namespace HX::net
-
-#endif // _HX_RESPONSE_H_

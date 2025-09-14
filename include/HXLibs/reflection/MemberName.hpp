@@ -17,8 +17,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef _HX_MEMBER_NAME_H_
-#define _HX_MEMBER_NAME_H_
 
 #include <string_view>
 #include <tuple>
@@ -26,6 +24,7 @@
 #include <utility>
 
 #include <HXLibs/reflection/MemberCount.hpp>
+#include <HXLibs/container/CHashMap.hpp>
 
 namespace HX::reflection {
 
@@ -37,7 +36,7 @@ namespace internal {
  * @return constexpr std::string_view 
  */
 template <auto ptr>
-inline constexpr std::string_view getMemberName() {
+inline constexpr std::string_view getMemberName() noexcept {
 #if defined(_MSC_VER)
     constexpr std::string_view funcName = __FUNCSIG__;
 #else
@@ -46,6 +45,7 @@ inline constexpr std::string_view getMemberName() {
 
 // 包裹一层`wrap`的原因: non-type template parameters of scalar type是在clang18才开始的,
 // 而Class types as non-type template parameters是在clang12就支持了
+// 以及 msvc 的bug: https://github.com/HengXin666/HXLibs/issues/7
 #if defined(__clang__)
     auto split = funcName.substr(0, funcName.size() - 2);
     return split.substr(split.find_last_of(".") + 1);
@@ -146,7 +146,7 @@ struct ReflectionVisitor<T, 0> {
 /**
  * @brief 偏特化模版生成 工具宏
  */
-#define _HX_GENERATE_TEMPLATES_WITH_SPECIALIZATION_(N, ...) \
+#define HX_GENERATE_TEMPLATES_WITH_SPECIALIZATION(N, ...)   \
 template <typename T>                                       \
 struct ReflectionVisitor<T, N> {                            \
     static constexpr auto visit() {                         \
@@ -239,7 +239,7 @@ Wrap(T) -> Wrap<T>;
  * @note https://godbolt.org/z/zzaWsP5j7
  */
 template <typename T>
-constexpr auto toWrap(T const& t) {
+constexpr auto toWrap(T const& t) noexcept {
     return Wrap{t};
 }
 
@@ -251,7 +251,7 @@ constexpr auto toWrap(T const& t) {
  * @return 所有成员变量的名称`array`
  */
 template <typename T>
-inline constexpr std::array<std::string_view, membersCountVal<T>> getMembersNames() {
+inline constexpr std::array<std::string_view, membersCountVal<T>> getMembersNames() noexcept {
     constexpr auto Cnt = membersCountVal<T>;
     std::array<std::string_view, Cnt> arr;
     constexpr auto tp = internal::getStaticObjPtrTuple<T>(); // 获取 tuple<成员指针...>
@@ -259,6 +259,22 @@ inline constexpr std::array<std::string_view, membersCountVal<T>> getMembersName
         ((arr[Is] = internal::getMemberName<internal::toWrap(std::get<Is>(tp))>()), ...);
     } (std::make_index_sequence<Cnt>{});
     return arr;
+}
+
+/**
+ * @brief 获取名称到索引的映射
+ * @tparam T 
+ * @return constexpr auto 编译期哈希表<std::string_view, std::size_t>
+ */
+template <typename T>
+inline constexpr auto getMembersNamesMap() noexcept {
+    constexpr auto Cnt = membersCountVal<T>;
+    constexpr auto tp = internal::getStaticObjPtrTuple<T>();
+    std::array<std::pair<std::string_view, std::size_t>, Cnt> arr;
+    [&] <std::size_t... Is> (std::index_sequence<Is...>) {
+        ((arr[Is] = {internal::getMemberName<internal::toWrap(std::get<Is>(tp))>(), Is}), ...);
+    } (std::make_index_sequence<Cnt>{});
+    return container::CHashMap<std::string_view, std::size_t, Cnt>{arr};
 }
 
 /**
@@ -281,4 +297,3 @@ inline constexpr void forEach(T&& obj, Visit&& func) {
 
 } // namespace HX::reflection
 
-#endif // !_HX_MEMBER_NAME_H_

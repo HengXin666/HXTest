@@ -17,8 +17,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef _HX_TASK_H_
-#define _HX_TASK_H_
 
 #include <stdexcept>
 
@@ -50,7 +48,9 @@ struct [[nodiscard]] Task {
         }
     }
 
-    Task(Task&& that) : _handle(that._handle) {
+    Task(Task&& that) noexcept 
+        : _handle(that._handle)
+    {
         that._handle = nullptr;
     }
 
@@ -70,16 +70,12 @@ struct [[nodiscard]] Task {
         return _handle;
     }
 
-    // constexpr std::coroutine_handle<promise_type> getPromise() const noexcept {
-    //     return _handle;
-    // }
-
     /**
      * @brief 立即执行协程
      * @warning 除非你可以保证它可以执行到 co_return 并且在此之前不会返回, 否则不要调用该方法
      * @return constexpr auto 
      */
-    constexpr auto start() const {
+    constexpr auto runSync() && {
         _handle.resume();
         if constexpr (requires {
             _handle.promise().result();
@@ -92,10 +88,13 @@ struct [[nodiscard]] Task {
             }
         }
     }
+
+    constexpr auto& getPromise() const noexcept {
+        return _handle;
+    }
 private:
     std::coroutine_handle<promise_type> _handle;
 };
 
 } // namespace HX::coroutine
 
-#endif // !_HX_TASK_H_

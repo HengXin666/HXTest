@@ -2,6 +2,11 @@
 
 Heng_Xin 学习C++, 并且做实验所使用的项目.
 
+> [!TIP]
+> 部分内容是以前写的, 会带有 `_大写`, `__*` 命名风格; 这是 UB 的 ([cppreference: identifiers](https://en.cppreference.com/w/cpp/language/identifiers.html)); 但是太多了, 这里仅是我实验使用的罢了. 基本上写了就不会再看了. 有用的会被迁移到其他地方, 不会继续更新了. 日后绝对不会这样写了~
+>
+> > 在全局命名空间中，以下划线开头的标识符 或者 双下划线或以下划线开头后跟大写字母的标识符 是保留字。(除了 `operator ""_id` 字面量)
+
 ## 个人学习笔记
 
 1. [C++无宏反射](./src/01-reflection/C++无宏反射.md)
@@ -71,6 +76,9 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
             - [实现反射: 从类型反射到字符串(不包含模板)](/src/06-std-analyse/test/12-reflection/structName.cpp) (C++17) & [](https://godbolt.org/z/o1sMYs15j)
         - 13-宏魔法学习 ~~(图灵完备的哦)~~
             - [目录](src/06-std-analyse/test/13-MacroMagic/)
+        - 14-临时测试
+        - 15-如何在模板形参中使用字符串
+            - [NTTP+constexpr类实例](./src/06-std-analyse/test/15-str-NTTP/02_str_tp.cpp)
 7. QT
    - 01-QML [QML-目录](./src/07-qt/01-qml/) | 笔记: [现代C++QT-QML](https://hengxin666.github.io/HXLoLi/docs/%E7%A8%8B%E5%BA%8F%E8%AF%AD%E8%A8%80/C++/%E7%8E%B0%E4%BB%A3C++/%E7%8E%B0%E4%BB%A3C++QT/QML/Window%E4%BB%8B%E7%BB%8D%E4%B8%B6%E5%88%9D%E8%AF%86)
 
@@ -114,3 +122,5 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
         - [01-一个循环依赖的实例](./src/10-cs-code/demo/02-CircularDependency/01_what_is.cpp)
         - [02-加上模板变为二阶段名称查找](./src/10-cs-code/demo/02-CircularDependency/02_to_template.cpp)
         - [03-上宏隐藏细节](./src/10-cs-code/demo/02-CircularDependency/03_macro.cpp)
+    - 03-[赤石QML] Wayland 窗口系统, 如何实现记忆窗口位置
+        - [FullScreenWindow.qml](https://github.com/HengXin666/HX-Music/blob/main/HX-Music-Client/resources/qml/window/FullScreenWindow.qml) (外部链接, 可能会失效)
