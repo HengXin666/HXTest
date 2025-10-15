@@ -3,10 +3,7 @@
 namespace HX {
 
 template <char... Cs>
-struct CStrWrap {
-    inline static constexpr auto N = sizeof...(Cs);
-    char str[N] {Cs...};
-};
+struct CStrWrap {};
 
 template <std::size_t N>
 struct CStr {
@@ -27,9 +24,11 @@ struct CStr {
 };
 
 template <CStr Str>
-using ToCs = decltype([] <std::size_t... Idx> (std::index_sequence<Idx...>) {
-    return CStrWrap<Str[Idx]...>{};
-}(std::make_index_sequence<Str.size()>{}));
+using ToCs = decltype(
+    [] <std::size_t... Idx> (std::index_sequence<Idx...>) {
+        return CStrWrap<Str[Idx]...>{};
+    }(std::make_index_sequence<Str.size()>{})
+);
 
 template <char... Cs>
 constexpr auto toNum(CStrWrap<Cs...>) {

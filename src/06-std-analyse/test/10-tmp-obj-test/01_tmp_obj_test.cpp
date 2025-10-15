@@ -28,7 +28,7 @@ struct A {
         };
     }
 
-    static PrintMan fk(A&& a) {
+    static PrintMan fk(A&&) {
         print::println("fate...");
         return {};
     }

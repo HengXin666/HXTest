@@ -39,7 +39,8 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
             - [复制粘贴其他的库来研究源码... 大部分都是编译期的](src/06-std-analyse/demo/05-pmh/02_cp_pmh_test.cpp)
             - [编译期完美哈希思想的比较探测的哈希表, 即便元素数量有1233个(我随便找的), 也毫无压力](src/06-std-analyse/demo/05-pmh/03_test_pmh.cpp)
             - [自己学习、注释、替换了第三方库的代码, 一个很小的可复现的code](src/06-std-analyse/demo/05-pmh/04_hx_pmh_map.cpp) (学习使用)
-
+        - 06-简单的哈希表的实现
+            - [unordered_map](./src/06-std-analyse/demo/06-hash-map/01_hash_map.cpp) (笔试题)
         - 坑:
             - std::is_convertible、 is_constructible 实现
     - 实验 & 学习
