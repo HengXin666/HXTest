@@ -33,7 +33,8 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
             - [unique_ptr](./src/06-std-analyse/demo/03-memory/01_UniquePtr.cpp)
             - [shared_ptr](./src/06-std-analyse/demo/03-memory/02_SharedPtr.cpp)
         - 04-sort
-            - [sort](./src/06-std-analyse/demo/04-sort/01_sort.cpp) (一个支持迭代器、谓词的单边快排)
+            - [sort](./src/06-std-analyse/demo/04-sort/01_QuickSort.cpp) (一个支持迭代器、谓词的单边快排)
+            - [堆 + 堆排序](./src/06-std-analyse/demo/04-sort/02_HeapSort.cpp)
         - 05-完美哈希
             - [gpt给的, 完美哈希源码, 但是数量太多(50)个就不行了](src/06-std-analyse/demo/05-pmh/01_test_pmh_map.cpp)
             - [复制粘贴其他的库来研究源码... 大部分都是编译期的](src/06-std-analyse/demo/05-pmh/02_cp_pmh_test.cpp)
