@@ -126,3 +126,7 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
         - [03-上宏隐藏细节](./src/10-cs-code/demo/02-CircularDependency/03_macro.cpp)
     - 03-[赤石QML] Wayland 窗口系统, 如何实现记忆窗口位置
         - [FullScreenWindow.qml](https://github.com/HengXin666/HX-Music/blob/main/HX-Music-Client/resources/qml/window/FullScreenWindow.qml) (外部链接, 可能会失效)
+
+11. 第三方库
+    - 01-gtest: https://github.com/google/googletest
+        - [简单使用GTest, 以及测试EBO](src/11-libsTest/gtest/01_gtest.cpp)

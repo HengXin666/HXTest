@@ -74,3 +74,10 @@ if(BUILD_10_CS_CODE)
     add_subdirectory(src/10-cs-code)
     message("=-=-=-=-=-=-= Build 10-cs-code =-=-=-=-=-=-=")
 endif()
+
+option(BUILD_11_LIBSTEST "Build 11-libsTest" ON)
+
+if(BUILD_11_LIBSTEST)
+    add_subdirectory(src/11-libsTest)
+    message("=-=-=-=-=-=-= Build 11-libsTest =-=-=-=-=-=-=")
+endif()

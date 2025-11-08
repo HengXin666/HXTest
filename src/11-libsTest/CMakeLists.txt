@@ -1,0 +1,44 @@
+project(11-libsTest LANGUAGES CXX)
+
+file(GLOB_RECURSE TEST_FILES CONFIGURE_DEPENDS
+    ./*/*.cpp
+)
+
+include(FetchContent)
+FetchContent_Declare(
+  googletest
+  URL https://github.com/google/googletest/archive/37678c92fb183b148163dd173430b4ab88586a26.zip
+)
+# 对于 Windows: 防止覆盖父项目的编译器/链接器设置
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
+
+# 遍历每个 .cpp 文件, 生成可执行文件
+foreach(TEST_FILE ${TEST_FILES})
+    # 提取 .cpp 文件名作为目标名 (去掉路径和扩展名)
+    get_filename_component(TEST_NAME ${TEST_FILE} NAME_WE)
+
+    # 获取 .cpp 文件所在的目录 (相对路径)
+    get_filename_component(TEST_DIR ${TEST_FILE} DIRECTORY)
+
+    # 获取 TEST_DIR 的最后一级目录名 (即父文件夹名)
+    get_filename_component(PARENT_DIR ${TEST_DIR} NAME)
+
+    # 添加测试可执行文件
+    add_executable(${TEST_NAME} ${TEST_FILE})
+
+    # 示例: 添加std线程依赖
+    # find_package(Threads REQUIRED)
+    # target_link_libraries(${TEST_NAME} Threads::Threads)
+
+    # 链接 GoogleTest 库
+    target_link_libraries(${TEST_NAME} PRIVATE gtest gtest_main)
+
+    # 设置 FOLDER 属性, 使其按所在 demo 子目录分类
+    set_target_properties(${TEST_NAME} PROPERTIES FOLDER 11-libsTest/${PARENT_DIR})
+
+    # 使用 Address Sanitizer
+    if(HX_DEBUG_BY_ADDRESS_SANITIZER AND CMAKE_BUILD_TYPE STREQUAL Debug)
+        target_compile_options(${TEST_NAME} PRIVATE -fsanitize=address)
+    endif()
+endforeach()
