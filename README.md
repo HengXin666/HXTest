@@ -32,6 +32,7 @@ Heng_Xin 学习C++, 并且做实验所使用的项目.
         - 03-memory
             - [unique_ptr](./src/06-std-analyse/demo/03-memory/01_UniquePtr.cpp)
             - [shared_ptr](./src/06-std-analyse/demo/03-memory/02_SharedPtr.cpp)
+            - [全新的智能指针 三位一体](./ser/../src/06-std-analyse/demo/03-memory/03_new_memory.cpp)
         - 04-sort
             - [sort](./src/06-std-analyse/demo/04-sort/01_QuickSort.cpp) (一个支持迭代器、谓词的单边快排)
             - [堆 + 堆排序](./src/06-std-analyse/demo/04-sort/02_HeapSort.cpp)
