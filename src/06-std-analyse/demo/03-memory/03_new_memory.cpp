@@ -1,6 +1,5 @@
 #include <type_traits>
 #include <iostream>
-#include <stdexcept>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -563,4 +562,6 @@ int main() {
 
     [[maybe_unused]] auto ptr_4 = S_Ptr<A>{ptr};
     [[maybe_unused]] auto ptr_5 = S_Ptr<A>{std::move(ptr)};
+
+    std::swap(ptr_4, ptr_5);
 }
